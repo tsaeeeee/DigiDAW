@@ -5,12 +5,31 @@ import { useAudioEngine } from './hooks/useAudioEngine';
 import { cn, formatTime } from './lib/utils';
 import { Track } from './types/daw';
 
+const SNAP_THRESHOLD_PX = 12;
+const MIN_ZOOM = 10;
+const MAX_ZOOM = 500;
+
 export default function App() {
   const audio = useAudioEngine();
   const [showMixer, setShowMixer] = useState(false);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [zoom, setZoom] = useState(50); // PX_PER_SECOND
+  const [snapIndicator, setSnapIndicator] = useState<{ time: number, type: 'head' | 'tail' | 'grid' } | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
   const canAddTrack = audio.tracks.length < 50;
+
+  const getSnapPoints = React.useCallback((excludeClipId: string): number[] => {
+    const points: number[] = [0, audio.currentTime];
+    for (const track of audio.tracks) {
+      for (const clip of track.clips) {
+        if (clip.id === excludeClipId) continue;
+        points.push(clip.startTime);
+        points.push(clip.startTime + clip.duration);
+      }
+    }
+    return points;
+  }, [audio.tracks, audio.currentTime]);
 
   // Calculate dynamic timeline duration based on longest clip
   const maxTrackTime = audio.tracks.reduce((max, track) => {
@@ -18,9 +37,9 @@ export default function App() {
     return Math.max(max, trackMax);
   }, 0);
 
-  // Minimum visible duration of 30 seconds, expands with content
-  const timelineDuration = Math.max(30, maxTrackTime + 10);
-  const timelineWidth = timelineDuration * 50; // 50px per second
+  // Minimum visible duration of 30 seconds, expands with content and playhead
+  const timelineDuration = Math.max(30, maxTrackTime + 10, audio.currentTime + 10);
+  const timelineWidth = timelineDuration * zoom;
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -34,7 +53,10 @@ export default function App() {
         audio.togglePlay();
       } else if (e.code === 'KeyM') {
         setShowMixer(prev => !prev);
-      } else if (e.code === 'KeyS') {
+      } else if (e.code === 'KeyS' && !e.metaKey && !e.ctrlKey) {
+        // Toggle snapping unless it's a save shortcut
+        setSnapEnabled(prev => !prev);
+      } else if (e.code === 'KeyX') {
         audio.stop();
       } else if (e.code === 'KeyT' && canAddTrack) {
         audio.addTrack();
@@ -121,7 +143,20 @@ export default function App() {
           <span>{formatTime(audio.currentTime)}</span>
         </div>
 
-        <div className="flex-1" />
+        <div className="flex-1 flex items-center justify-center px-8">
+          <div className="flex items-center gap-3 w-full max-w-[200px] group">
+            <Clock className="w-3 h-3 text-[#666] group-hover:text-[#ffd900] transition-colors" />
+            <input 
+              type="range"
+              min={MIN_ZOOM}
+              max={MAX_ZOOM}
+              value={zoom}
+              onChange={(e) => setZoom(parseInt(e.target.value))}
+              className="flex-1 h-1 bg-[#333] rounded-full appearance-none cursor-pointer accent-[#ffd900]"
+              title="Timeline Zoom"
+            />
+          </div>
+        </div>
 
         <div className="flex items-center gap-2">
           <button 
@@ -152,6 +187,19 @@ export default function App() {
           </button>
 
           <button 
+            onClick={() => setSnapEnabled(!snapEnabled)}
+            title={`Toggle Snapping (${snapEnabled ? 'On' : 'Off'}) - Press 'S'`}
+            className={cn(
+              "flex items-center justify-center w-8 h-7 rounded-sm transition-all border",
+              snapEnabled 
+                ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/50 hover:bg-cyan-500/30" 
+                : "bg-[#3a3a3a] border-[#444] text-[#8e9299] hover:bg-[#444]"
+            )}
+          >
+            <Activity className={cn("w-3.5 h-3.5", snapEnabled && "animate-pulse")} />
+          </button>
+
+          <button 
             onClick={audio.renderAudio}
             disabled={audio.isRendering}
             title={audio.isRendering ? "Rendering..." : "Render Audio"}
@@ -166,18 +214,21 @@ export default function App() {
       </header>
 
       {/* 2. Main Area: Timeline */}
-      <main className="flex-1 flex overflow-hidden relative">
-        <div 
+      <main className="flex-1 overflow-hidden relative">
+        <div
           ref={scrollContainerRef}
-          className="flex-1 flex flex-col overflow-auto min-h-0"
+          className="absolute inset-0 overflow-auto bg-[#121212]"
         >
-          <div className="flex flex-1 min-h-full min-w-max relative">
-            {/* Track Headers */}
-            <div className="w-[220px] border-r border-[#333] flex flex-col bg-[#151515] sticky left-0 z-40 shrink-0">
+          <div
+            className="flex relative"
+            style={{ minHeight: '100%', minWidth: 220 + timelineWidth }}
+          >
+            {/* Track Headers — sticky left */}
+            <div className="w-[220px] shrink-0 flex flex-col bg-[#151515] sticky left-0 z-40 border-r border-[#333]">
               {audio.tracks.map(track => (
-                <TrackHeader 
-                  key={track.id} 
-                  track={track} 
+                <TrackHeader
+                  key={track.id}
+                  track={track}
                   updateParams={audio.updateTrackParams}
                   onUpload={(file) => audio.uploadClip(track.id, file)}
                   onDelete={() => handleDeleteTrack(track.id)}
@@ -187,50 +238,56 @@ export default function App() {
               <div className="flex-1 bg-[#121212]" />
             </div>
 
-            {/* Timeline Grid */}
-            <div 
-              className="min-h-full relative bg-[#121212] min-w-0 flex flex-col cursor-crosshair"
-              style={{ width: `${timelineWidth}px` }}
+            {/* Timeline column — flex-1 + align-stretch guarantees full height */}
+            <div
+              id="timeline-column"
+              className="relative flex-1 cursor-crosshair"
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                const scrollLeft = scrollContainerRef.current?.scrollLeft || 0;
-                const x = e.clientX - rect.left + scrollLeft;
-                audio.seek(x / 50);
+                const x = e.clientX - rect.left;
+                audio.seek(x / zoom);
               }}
             >
-              {/* Vertical Lines Grid */}
-              <div className="absolute inset-y-0 left-0 opacity-10 pointer-events-none z-0" 
-                style={{ 
-                  width: `${timelineWidth}px`,
-                  backgroundImage: 'linear-gradient(90deg, #333 1px, transparent 1px)', 
-                  backgroundSize: '50px 100%' 
-                }} 
+              {/* Vertical grid lines — absolute, fills full timeline */}
+              <div className="absolute inset-0 opacity-10 pointer-events-none z-0"
+                style={{
+                  backgroundImage: 'linear-gradient(90deg, #333 1px, transparent 1px)',
+                  backgroundSize: `${zoom}px 100%`
+                }}
               />
-              
-              {/* Tracks in Timeline */}
+
+              {/* Track lanes */}
               {audio.tracks.map(track => (
-                <div key={track.id} 
-                  className="h-[80px] border-b border-[#333] relative group shrink-0 z-10"
-                  style={{ width: `${timelineWidth}px` }}
+                <div key={track.id}
+                  className="h-[80px] border-b border-[#333] relative group z-10"
                 >
                   {track.clips.map(clip => (
-                    <AudioClipItem 
-                      key={clip.id} 
-                      clip={clip} 
-                      color={track.color} 
-                      onMove={(newStart) => audio.updateClipPosition(track.id, clip.id, newStart)}
-                    />
-                  ))}
-                </div>
-              ))}
-              
-              {/* Spacing at the bottom to ensure vertical scrolling feels right */}
-              <div className="min-h-[200px] flex-1" />
-              
-              {/* Playhead */}
-              <div 
-                 className="absolute top-0 bottom-0 w-px bg-[#ffd900] z-30 pointer-events-none shadow-[0_0_10px_rgba(255,217,0,0.8)]" 
-                 style={{ left: `${audio.currentTime * 50}px` }} 
+                    <AudioClipItem
+                      key={clip.id}
+                      clip={clip}
+                      color={track.color}
+                    onMove={(newStart) => audio.updateClipPosition(track.id, clip.id, newStart)}
+                    getSnapPoints={() => getSnapPoints(clip.id)}
+                    onSnapIndicator={setSnapIndicator}
+                    snapEnabled={snapEnabled}
+                    zoom={zoom}
+                  />
+                ))}
+              </div>
+            ))}
+
+            {/* Snap indicator — only visible during drag */}
+            {snapIndicator !== null && (
+              <div
+                className="absolute top-0 bottom-0 w-px bg-cyan-400/80 z-30 pointer-events-none shadow-[0_0_8px_rgba(34,211,238,0.6)]"
+                style={{ left: `${snapIndicator.time * zoom}px` }}
+              />
+            )}
+
+              {/* Playhead — absolute, spans full timeline height */}
+              <div
+                 className="absolute top-0 bottom-0 w-px bg-[#ffd900] z-30 pointer-events-none shadow-[0_0_10px_rgba(255,217,0,0.8)]"
+                 style={{ left: `${audio.currentTime * zoom}px` }}
               >
                 <div className="sticky top-0 py-1">
                   <div className="w-1.5 h-1.5 bg-[#ffd900] rounded-full -ml-[2.5px] -mt-1 shadow-[0_0_8px_rgba(255,217,0,0.6)] z-30" />
@@ -405,9 +462,50 @@ interface AudioClipItemProps {
   clip: any;
   color: string;
   onMove: (newStartTime: number) => void;
+  getSnapPoints: () => number[];
+  onSnapIndicator: (snap: { time: number, type: 'head' | 'tail' | 'grid' } | null) => void;
+  snapEnabled: boolean;
+  zoom: number;
 }
 
-function AudioClipItem({ clip, color, onMove }: AudioClipItemProps) {
+interface SnapResult {
+  time: number;
+  snappedAt: { time: number, type: 'head' | 'tail' | 'grid' } | null;
+}
+
+function applySnap(
+  rawStartTime: number,
+  _duration: number,
+  points: number[],
+  thresholdSeconds: number,
+  snapEnabled: boolean,
+  _grabOffsetSeconds: number
+): SnapResult {
+  if (!snapEnabled) return { time: rawStartTime, snappedAt: null };
+
+  // Only the head (start edge) snaps. The cyan indicator therefore always
+  // appears at the clip's left edge, never `duration` away.
+  const allPoints = [...points];
+  const gridInterval = 1;
+  const gHead = Math.round(rawStartTime / gridInterval) * gridInterval;
+  allPoints.push(gHead);
+
+  let best: { time: number, delta: number } | null = null;
+  for (const point of allPoints) {
+    const delta = Math.abs(rawStartTime - point);
+    if (delta < thresholdSeconds && (!best || delta < best.delta)) {
+      best = { time: point, delta };
+    }
+  }
+
+  if (!best) return { time: Math.max(0, rawStartTime), snappedAt: null };
+  return {
+    time: Math.max(0, best.time),
+    snappedAt: { time: best.time, type: 'head' },
+  };
+}
+
+function AudioClipItem({ clip, color, onMove, getSnapPoints, onSnapIndicator, snapEnabled, zoom }: AudioClipItemProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [visualStartTime, setVisualStartTime] = useState(clip.startTime);
   const isDragging = React.useRef(false);
@@ -449,24 +547,68 @@ function AudioClipItem({ clip, color, onMove }: AudioClipItemProps) {
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
+    
+    const timeline = document.getElementById('timeline-column');
+    if (!timeline) return;
+    const timelineRect = timeline.getBoundingClientRect();
+    
     isDragging.current = true;
-    startX.current = e.clientX;
-    startStartTime.current = clip.startTime;
+    
+    // Use local coordinates relative to the timeline column itself.
+    // This is immune to sidebar width, viewport position, and scroll offsets.
+    const startXLocal = e.clientX - timelineRect.left;
+    const startStartTimeVal = clip.startTime;
+    startStartTime.current = startStartTimeVal;
+    
+    const grabOffsetSeconds = (startXLocal - (startStartTimeVal * zoom)) / zoom;
+
+    // Include the clip's own starting position as a snap point
+    const points = [...getSnapPoints(), startStartTimeVal];
+    const thresholdSeconds = SNAP_THRESHOLD_PX / zoom;
+
+    let didMove = false;
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!isDragging.current) return;
-      const delta = (moveEvent.clientX - startX.current) / 50;
-      const newTime = Math.max(0, startStartTime.current + delta);
-      setVisualStartTime(newTime);
+      
+      const currentXLocal = moveEvent.clientX - timelineRect.left;
+      const delta = (currentXLocal - startXLocal) / zoom;
+      
+      if (Math.abs(moveEvent.clientX - e.clientX) > 2) {
+        didMove = true;
+      }
+      
+      if (!didMove) return;
+      
+      const rawTime = Math.max(0, startStartTime.current + delta);
+      // Snap during drag: when within threshold of a snap target, the clip
+      // head visually locks onto the cyan line; outside, it follows the mouse.
+      const { time, snappedAt } = applySnap(rawTime, clip.duration, points, thresholdSeconds, snapEnabled, grabOffsetSeconds);
+
+      setVisualStartTime(time);
+      onSnapIndicator(snappedAt);
     };
 
     const handleMouseUp = (upEvent: MouseEvent) => {
-      if (isDragging.current) {
-        const delta = (upEvent.clientX - startX.current) / 50;
-        const finalTime = Math.max(0, startStartTime.current + delta);
-        onMove(finalTime);
+      if (isDragging.current && didMove) {
+        const currentXLocal = upEvent.clientX - timelineRect.left;
+        const delta = (currentXLocal - startXLocal) / zoom;
+        const rawTime = Math.max(0, startStartTime.current + delta);
+        
+        const { time } = applySnap(rawTime, clip.duration, points, thresholdSeconds, snapEnabled, grabOffsetSeconds);
+        onMove(time);
+        
+        const suppressClick = (clickEvent: MouseEvent) => {
+          clickEvent.stopPropagation();
+          clickEvent.preventDefault();
+          window.removeEventListener('click', suppressClick, true);
+        };
+        window.addEventListener('click', suppressClick, true);
+      } else if (isDragging.current) {
+        setVisualStartTime(clip.startTime);
       }
       isDragging.current = false;
+      onSnapIndicator(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -480,21 +622,22 @@ function AudioClipItem({ clip, color, onMove }: AudioClipItemProps) {
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       className={cn(
-        "absolute top-1 bottom-1 rounded border overflow-hidden flex flex-col bg-black/40 cursor-grab active:cursor-grabbing hover:bg-black/60 transition-colors z-20",
+        "absolute top-1 bottom-1 rounded border overflow-hidden flex flex-col bg-black/40 cursor-grab active:cursor-grabbing hover:bg-black/60 transition-colors z-20 origin-left",
         isDragging.current && "opacity-80 border-white shadow-xl scale-[1.02]"
       )}
-      style={{ 
-        left: `${visualStartTime * 50}px`, 
-        width: `${clip.duration * 50}px`,
+      style={{
+        left: `${visualStartTime * zoom}px`,
+        width: `${clip.duration * zoom}px`,
         borderColor: `${color}80`
       }}
       onMouseDown={handleMouseDown}
+      onClick={(e: React.MouseEvent) => e.stopPropagation()}
     >
-      <canvas 
-        ref={canvasRef} 
-        className="w-full h-full opacity-60 pointer-events-none" 
-        width={clip.duration * 50} 
-        height={60} 
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full opacity-60 pointer-events-none"
+        width={clip.duration * zoom}
+        height={60}
       />
       <div className="absolute inset-x-0 bottom-0 h-4 bg-black/40 flex items-center px-1 pointer-events-none">
         <span className="text-[8px] text-white/50 font-medium truncate">{clip.name}</span>
