@@ -56,7 +56,7 @@ function Knob({ label, value, min, max, step, defaultValue, displayValue, size =
       const decimals = Math.max(1, Math.round(-Math.log10(step)));
       newVal = parseFloat(newVal.toFixed(decimals));
     }
-    return newVal;
+    return Math.max(min, Math.min(max, newVal));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -258,6 +258,8 @@ interface ReverbModalProps {
   isPlaying?: boolean;
   onUpdateParams: (slotIndex: number, bypassed: boolean, params: Record<string, number>) => void;
   onClose: () => void;
+  zIndex?: number;
+  onFocus?: () => void;
 }
 
 export function ReverbModal({
@@ -265,6 +267,8 @@ export function ReverbModal({
   slotIndex,
   onUpdateParams,
   onClose,
+  zIndex,
+  onFocus,
 }: ReverbModalProps) {
   const isDraggingWindow = useRef(false);
   const windowDragStart = useRef({ x: 0, y: 0 });
@@ -491,30 +495,31 @@ export function ReverbModal({
   return (
     <div className="fixed inset-0 z-[300] pointer-events-none">
       <div
-        style={{ left: `${position.x}px`, top: `${position.y}px`, width: '630px' }}
-        className="fixed z-[310] pointer-events-auto bg-[#222224] border border-[#3e3e42] rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden font-sans select-none animate-in fade-in zoom-in-95 duration-100"
+        onMouseDown={() => onFocus?.()}
+        style={{ left: `${position.x}px`, top: `${position.y}px`, width: '630px', zIndex: zIndex ?? 310 }}
+        className="fixed pointer-events-auto bg-[#222224] border border-[#3e3e42] rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden font-sans select-none animate-in fade-in zoom-in-95 duration-100"
       >
         {/* Top Header Bar */}
         <div
           onMouseDown={handleWindowHeaderMouseDown}
-          className="h-9 bg-[#2d2d30] border-b border-[#3a3a3e] px-2.5 flex items-center justify-between cursor-move"
+          className="h-10 bg-[#2d2d30] border-b border-[#3a3a3e] px-3 flex items-center justify-between cursor-move"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={toggleBypass}
               className={cn(
-                "w-5 h-5 rounded-full border flex items-center justify-center transition-all",
+                "w-6 h-6 rounded-full border flex items-center justify-center transition-all",
                 !isBypassed
-                  ? "border-[#22c55e] text-[#22c55e] bg-[#22c55e]/10 shadow-[0_0_8px_rgba(34,197,94,0.4)]"
+                  ? "border-[#ffd900] text-[#ffd900] bg-[#ffd900]/10 shadow-[0_0_8px_rgba(255,217,0,0.4)]"
                   : "border-[#555] text-[#777] bg-[#1a1a1a]"
               )}
               title="Bypass / Power Switch"
             >
-              <Power className="w-3 h-3" />
+              <Power className="w-3.5 h-3.5" />
             </button>
 
-            <span className="text-white font-medium text-xs tracking-wide">
+            <span className="text-white font-medium text-sm tracking-wide">
               Reverb
             </span>
           </div>

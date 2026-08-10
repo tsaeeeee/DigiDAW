@@ -45,9 +45,9 @@ export function createSaturationCurve(
     const maxBound = Math.max(Math.abs(maxVal), Math.abs(minVal));
 
     if (maxBound > 0) {
-      curve[i] = y / maxBound;
+      curve[i] = Math.max(-1, Math.min(1, y / maxBound));
     } else {
-      curve[i] = y;
+      curve[i] = Math.max(-1, Math.min(1, y));
     }
   }
 

@@ -54,7 +54,7 @@ function Knob({ label, value, min, max, step, defaultValue, displayValue, size =
       const decimals = Math.max(1, Math.round(-Math.log10(step)));
       newVal = parseFloat(newVal.toFixed(decimals));
     }
-    return newVal;
+    return Math.max(min, Math.min(max, newVal));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -99,9 +99,9 @@ function Knob({ label, value, min, max, step, defaultValue, displayValue, size =
   const normVal = Math.max(0, Math.min(1, (value - min) / (max - min)));
   const angle = -135 + normVal * 270;
 
-  const knobPx = size === 'sm' ? 36 : size === 'lg' ? 52 : size === 'xl' ? 72 : 44;
-  const svgPx = size === 'sm' ? 44 : size === 'lg' ? 62 : size === 'xl' ? 86 : 52;
-  const radius = size === 'sm' ? 16 : size === 'lg' ? 24 : size === 'xl' ? 34 : 20;
+  const knobPx = size === 'sm' ? 28 : size === 'lg' ? 42 : size === 'xl' ? 52 : 34;
+  const svgPx = size === 'sm' ? 40 : size === 'lg' ? 56 : size === 'xl' ? 68 : 46;
+  const radius = size === 'sm' ? 15 : size === 'lg' ? 21 : size === 'xl' ? 26 : 17;
   const center = svgPx / 2;
   const strokeWidth = size === 'xl' ? 4 : 3;
 
@@ -125,12 +125,18 @@ function Knob({ label, value, min, max, step, defaultValue, displayValue, size =
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
     >
+      {label && (
+        <span className="text-[#888] text-[9.5px] font-medium tracking-wide mb-1 uppercase">
+          {label}
+        </span>
+      )}
+
       <div className="relative flex items-center justify-center" style={{ width: svgPx, height: svgPx }}>
         <svg style={{ width: svgPx, height: svgPx }} className="transform -rotate-90">
           <path
             d={bgPath}
             fill="none"
-            stroke="#28282b"
+            stroke="#2a2a2e"
             strokeWidth={strokeWidth}
             strokeLinecap="round"
           />
@@ -146,31 +152,16 @@ function Knob({ label, value, min, max, step, defaultValue, displayValue, size =
         </svg>
 
         <div 
-          className={cn(
-            "absolute rounded-full border shadow-xl flex items-center justify-center transition-shadow",
-            size === 'xl'
-              ? "bg-gradient-to-b from-[#2d2e33] via-[#1f2024] to-[#121316] border-[#42444e] shadow-[0_4px_12px_rgba(0,0,0,0.8)]"
-              : "bg-gradient-to-b from-[#2a2b30] to-[#18191c] border-[#383a42] shadow-md"
-          )}
+          className="absolute rounded-full bg-[#1e1e22] border border-[#383842] shadow-md flex items-center justify-center"
           style={{ 
             width: knobPx, 
             height: knobPx, 
             transform: `rotate(${angle + 90}deg)` 
           }}
-        >
-          {/* Radial Indicator Notch */}
-          <div className={cn(
-            "bg-amber-400 rounded-full mb-auto shadow-[0_0_6px_#f59e0b]",
-            size === 'xl' ? "w-[3px] h-[10px] mt-1.5" : "w-[2px] h-[7px] mt-1"
-          )} />
-        </div>
+        />
       </div>
 
-      <span className="text-[#a0a5b5] text-[10.5px] font-bold tracking-wider uppercase mt-1">
-        {label}
-      </span>
-
-      <span className="text-[#f1f5f9] text-[11px] font-mono font-bold mt-0.5 text-amber-400">
+      <span className="text-[#e0e0e0] text-[11px] font-mono font-medium mt-1">
         {displayValue}
       </span>
     </div>
@@ -184,6 +175,8 @@ interface DelayModalProps {
   isPlaying?: boolean;
   onUpdateParams: (slotIndex: number, bypassed: boolean, params: Record<string, number>) => void;
   onClose: () => void;
+  zIndex?: number;
+  onFocus?: () => void;
 }
 
 export function DelayModal({
@@ -193,6 +186,8 @@ export function DelayModal({
   isPlaying,
   onUpdateParams,
   onClose,
+  zIndex,
+  onFocus,
 }: DelayModalProps) {
   const isDraggingWindow = useRef(false);
   const windowDragStart = useRef({ x: 0, y: 0 });
@@ -320,30 +315,31 @@ export function DelayModal({
 
   return (
     <div
-      style={{ left: `${position.x}px`, top: `${position.y}px` }}
-      className="fixed z-50 w-[580px] bg-[#141518] border border-[#2e3038] rounded-xl shadow-2xl overflow-hidden font-sans select-none animate-in fade-in zoom-in-95 duration-100"
+      onMouseDown={() => onFocus?.()}
+      style={{ left: `${position.x}px`, top: `${position.y}px`, zIndex: zIndex ?? 310 }}
+      className="fixed w-[580px] bg-[#141518] border border-[#2e3038] rounded-xl shadow-2xl overflow-hidden font-sans select-none animate-in fade-in zoom-in-95 duration-100"
     >
       {/* Top Window Header */}
       <div
         onMouseDown={handleWindowHeaderMouseDown}
-        className="h-8 bg-[#1a1b20] border-b border-[#2d3038] px-3 flex items-center justify-between cursor-grab active:cursor-grabbing"
+        className="h-10 bg-[#1a1b20] border-b border-[#2d3038] px-3 flex items-center justify-between cursor-grab active:cursor-grabbing"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <button
             type="button"
             onClick={toggleBypass}
             className={cn(
-              "w-4 h-4 rounded-full flex items-center justify-center transition-all",
-              isBypassed
-                ? "bg-[#2a2c33] text-[#666] border border-[#444]"
-                : "bg-amber-400 text-black shadow-[0_0_8px_#f59e0b]"
+              "w-6 h-6 rounded-full border flex items-center justify-center transition-all",
+              !isBypassed
+                ? "border-[#ffd900] text-[#ffd900] bg-[#ffd900]/10 shadow-[0_0_8px_rgba(255,217,0,0.4)]"
+                : "border-[#555] text-[#777] bg-[#1a1a1a]"
             )}
             title="Bypass / Power Switch"
           >
-            <Power className="w-2.5 h-2.5" />
+            <Power className="w-3.5 h-3.5" />
           </button>
 
-          <span className="text-white font-bold text-sm tracking-wide">
+          <span className="text-white font-medium text-sm tracking-wide">
             Delay
           </span>
         </div>
@@ -462,7 +458,7 @@ export function DelayModal({
             <div className="flex flex-col items-center">
               {syncMode === 0 ? (
                 <Knob
-                  label=""
+                  label="Time"
                   value={time}
                   min={10}
                   max={2000}

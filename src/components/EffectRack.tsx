@@ -38,6 +38,25 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
   const [activeDelaySlotIndex, setActiveDelaySlotIndex] = useState<number | null>(null);
   const [activeSaturatorSlotIndex, setActiveSaturatorSlotIndex] = useState<number | null>(null);
 
+  const [modalZIndices, setModalZIndices] = useState<Record<string, number>>({
+    Compressor: 310,
+    EQ: 310,
+    Limiter: 310,
+    Reverb: 310,
+    Delay: 310,
+    Saturator: 310,
+  });
+  const highestZIndexRef = useRef<number>(310);
+
+  const bringToFront = (type: EffectType) => {
+    highestZIndexRef.current += 1;
+    const newZ = highestZIndexRef.current;
+    setModalZIndices(prev => ({
+      ...prev,
+      [type]: newZ,
+    }));
+  };
+
   // Find highest index with a chosen effect
   let lastFilledIndex = -1;
   for (let i = 0; i < effects.length; i++) {
@@ -57,16 +76,22 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
     e.stopPropagation();
     if (slot.type === 'Compressor') {
       setActiveCompressorSlotIndex(slotIndex);
+      bringToFront('Compressor');
     } else if (slot.type === 'EQ') {
       setActiveEQSlotIndex(slotIndex);
+      bringToFront('EQ');
     } else if (slot.type === 'Limiter') {
       setActiveLimiterSlotIndex(slotIndex);
+      bringToFront('Limiter');
     } else if (slot.type === 'Reverb') {
       setActiveReverbSlotIndex(slotIndex);
+      bringToFront('Reverb');
     } else if (slot.type === 'Delay') {
       setActiveDelaySlotIndex(slotIndex);
+      bringToFront('Delay');
     } else if (slot.type === 'Saturator') {
       setActiveSaturatorSlotIndex(slotIndex);
+      bringToFront('Saturator');
     } else {
       const rect = e.currentTarget.getBoundingClientRect();
       setActiveSlotPicker({ slotIndex, rect });
@@ -162,6 +187,7 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
           onClose={() => setActiveSlotPicker(null)}
           onSelect={(type) => {
             onUpdateEffect(activeSlotPicker.slotIndex, type, false);
+            if (type) bringToFront(type);
             if (type === 'Compressor') {
               setActiveCompressorSlotIndex(activeSlotPicker.slotIndex);
             } else if (type === 'EQ') {
@@ -191,6 +217,8 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
             onUpdateEffect(slotIdx, 'Compressor', bypassed, params);
           }}
           onClose={() => setActiveCompressorSlotIndex(null)}
+          zIndex={modalZIndices.Compressor}
+          onFocus={() => bringToFront('Compressor')}
         />
       )}
 
@@ -205,6 +233,8 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
             onUpdateEffect(slotIdx, 'EQ', bypassed, params);
           }}
           onClose={() => setActiveEQSlotIndex(null)}
+          zIndex={modalZIndices.EQ}
+          onFocus={() => bringToFront('EQ')}
         />
       )}
 
@@ -219,6 +249,8 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
             onUpdateEffect(slotIdx, 'Limiter', bypassed, params);
           }}
           onClose={() => setActiveLimiterSlotIndex(null)}
+          zIndex={modalZIndices.Limiter}
+          onFocus={() => bringToFront('Limiter')}
         />
       )}
 
@@ -233,6 +265,8 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
             onUpdateEffect(slotIdx, 'Reverb', bypassed, params);
           }}
           onClose={() => setActiveReverbSlotIndex(null)}
+          zIndex={modalZIndices.Reverb}
+          onFocus={() => bringToFront('Reverb')}
         />
       )}
 
@@ -247,6 +281,8 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
             onUpdateEffect(slotIdx, 'Delay', bypassed, params);
           }}
           onClose={() => setActiveDelaySlotIndex(null)}
+          zIndex={modalZIndices.Delay}
+          onFocus={() => bringToFront('Delay')}
         />
       )}
 
@@ -261,6 +297,8 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
             onUpdateEffect(slotIdx, 'Saturator', bypassed, params);
           }}
           onClose={() => setActiveSaturatorSlotIndex(null)}
+          zIndex={modalZIndices.Saturator}
+          onFocus={() => bringToFront('Saturator')}
         />
       )}
     </div>

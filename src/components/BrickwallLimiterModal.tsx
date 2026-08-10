@@ -45,7 +45,7 @@ function Knob({ label, value, min, max, step, defaultValue, displayValue, onChan
       const decimals = Math.max(1, Math.round(-Math.log10(step)));
       newVal = parseFloat(newVal.toFixed(decimals));
     }
-    return newVal;
+    return Math.max(min, Math.min(max, newVal));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -157,6 +157,8 @@ interface BrickwallLimiterModalProps {
   isPlaying?: boolean;
   onUpdateParams: (slotIndex: number, bypassed: boolean, params: Record<string, number>) => void;
   onClose: () => void;
+  zIndex?: number;
+  onFocus?: () => void;
 }
 
 export function BrickwallLimiterModal({
@@ -166,6 +168,8 @@ export function BrickwallLimiterModal({
   isPlaying,
   onUpdateParams,
   onClose,
+  zIndex,
+  onFocus,
 }: BrickwallLimiterModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -462,29 +466,30 @@ export function BrickwallLimiterModal({
     <div className="fixed inset-0 z-[300] pointer-events-none">
       <div
         ref={modalRef}
-        style={{ left: `${position.x}px`, top: `${position.y}px`, width: '440px' }}
-        className="fixed z-[310] pointer-events-auto bg-[#202023] border border-[#3e3e44] rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.95)] flex flex-col overflow-hidden font-sans select-none animate-in fade-in zoom-in-95 duration-100"
+        onMouseDown={() => onFocus?.()}
+        style={{ left: `${position.x}px`, top: `${position.y}px`, width: '440px', zIndex: zIndex ?? 310 }}
+        className="fixed pointer-events-auto bg-[#202023] border border-[#3e3e44] rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.95)] flex flex-col overflow-hidden font-sans select-none animate-in fade-in zoom-in-95 duration-100"
       >
         {/* Header Bar */}
         <div
           onMouseDown={handleHeaderMouseDown}
           className="h-10 bg-[#2a2a2d] border-b border-[#38383d] px-3 flex items-center justify-between cursor-move"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={toggleBypass}
               className={cn(
                 "w-6 h-6 rounded-full border flex items-center justify-center transition-all",
                 !isBypassed
-                  ? "border-[#eab308] text-[#eab308] bg-[#eab308]/15 shadow-[0_0_8px_rgba(234,179,8,0.4)]"
+                  ? "border-[#ffd900] text-[#ffd900] bg-[#ffd900]/10 shadow-[0_0_8px_rgba(255,217,0,0.4)]"
                   : "border-[#555] text-[#777] bg-[#1a1a1a]"
               )}
             >
               <Power className="w-3.5 h-3.5" />
             </button>
 
-            <span className="text-white font-bold text-sm tracking-wide">
+            <span className="text-white font-medium text-sm tracking-wide">
               Limiter
             </span>
           </div>

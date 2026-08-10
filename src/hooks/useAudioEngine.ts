@@ -7,12 +7,13 @@ import { SaturationNode, SaturationMode } from '../dsp/saturator/SaturationNode'
 
 function createLimiterCurve(limitLinear: number, enabled: number, length = 1024): Float32Array {
   const curve = new Float32Array(length);
+  const clampedLimit = Math.max(0.0001, Math.min(1.0, limitLinear));
   for (let i = 0; i < length; i++) {
     const x = (i / (length - 1)) * 2 - 1;
     if (enabled === 1) {
-      curve[i] = Math.max(-limitLinear, Math.min(limitLinear, x));
+      curve[i] = Math.max(-1, Math.min(1, Math.max(-clampedLimit, Math.min(clampedLimit, x))));
     } else {
-      curve[i] = x;
+      curve[i] = Math.max(-1, Math.min(1, x));
     }
   }
   return curve;
@@ -116,17 +117,17 @@ export class StereoChannel {
           const comp = instance.nodes[0] as Tone.Compressor;
           const gainNode = instance.nodes[1] as Tone.Volume;
           const p = slot.params || {};
-          const thresh = p.threshold ?? -20;
-          const rat = p.ratio ?? 4;
-          const att = (p.attack ?? 10) / 1000;
-          const rel = (p.release ?? 100) / 1000;
-          const outGain = p.output ?? 0;
+          const thresh = Math.max(-100, Math.min(0, p.threshold ?? -20));
+          const rat = Math.max(1, Math.min(20, p.ratio ?? 4));
+          const att = Math.max(0.0001, Math.min(0.999, (p.attack ?? 10) / 1000));
+          const rel = Math.max(0.001, Math.min(0.999, (p.release ?? 100) / 1000));
+          const outGain = Math.max(-60, Math.min(24, p.output ?? 0));
 
           if (comp) {
             if (comp.threshold) comp.threshold.value = thresh;
-            if (comp.ratio) comp.ratio.value = Math.max(1, rat);
-            if (comp.attack) comp.attack.value = Math.max(0.0001, att);
-            if (comp.release) comp.release.value = Math.max(0.001, rel);
+            if (comp.ratio) comp.ratio.value = rat;
+            if (comp.attack) comp.attack.value = att;
+            if (comp.release) comp.release.value = rel;
           }
           if (gainNode && gainNode.volume) {
             gainNode.volume.value = outGain;
@@ -167,25 +168,25 @@ export class StereoChannel {
           const hardClipper = instance.nodes[3] as Tone.WaveShaper;
 
           const p = slot.params || {};
-          const ceiling = p.ceiling ?? -0.5;
-          const drive = p.drive ?? 4.0;
-          const release = (p.release ?? 50) / 1000;
-          const sat = (p.diodeSat ?? 15) / 100;
+          const ceiling = Math.max(-60, Math.min(-0.01, p.ceiling ?? -0.5));
+          const drive = Math.max(-24, Math.min(24, p.drive ?? 4.0));
+          const release = Math.max(0.005, Math.min(0.999, (p.release ?? 50) / 1000));
+          const sat = Math.max(0, Math.min(0.999, (p.diodeSat ?? 15) / 100));
           const truePeak = p.truePeak ?? 1;
 
           if (inputDrive && inputDrive.volume) {
             inputDrive.volume.value = drive;
           }
           if (dist) {
-            dist.distortion = Math.max(0.001, sat * 0.8);
-            if (dist.wet) dist.wet.value = sat;
+            dist.distortion = Math.max(0.001, Math.min(0.999, sat * 0.8));
+            if (dist.wet) dist.wet.value = Math.max(0, Math.min(0.999, sat));
           }
           if (limiter) {
-            if (limiter.threshold) limiter.threshold.value = Math.min(-0.01, ceiling);
-            if (limiter.release) limiter.release.value = Math.max(0.005, release);
+            if (limiter.threshold) limiter.threshold.value = ceiling;
+            if (limiter.release) limiter.release.value = release;
           }
           if (hardClipper) {
-            const limitLinear = Math.pow(10, Math.min(-0.01, ceiling) / 20);
+            const limitLinear = Math.pow(10, ceiling / 20);
             hardClipper.curve = createLimiterCurve(limitLinear, truePeak);
           }
         } else if (slot.type === 'Reverb' && instance.nodes.length >= 1) {
@@ -223,7 +224,7 @@ export class StereoChannel {
           if (delayNode) {
             if (delayNode.delayTime) delayNode.delayTime.value = Math.max(0.001, Math.min(2.0, timeMs / 1000));
             if (delayNode.feedback) delayNode.feedback.value = Math.max(0, Math.min(0.95, feedback / 100));
-            if (delayNode.wet) delayNode.wet.value = Math.max(0, Math.min(1.0, wetMix / 100));
+            if (delayNode.wet) delayNode.wet.value = Math.max(0, Math.min(0.999, wetMix / 100));
           }
           if (outputVol && outputVol.volume) {
             outputVol.volume.value = outGain;
@@ -296,17 +297,17 @@ export class StereoChannel {
         switch (slot.type) {
           case 'Compressor': {
             const p = slot.params || {};
-            const thresh = p.threshold ?? -20;
-            const rat = p.ratio ?? 4;
-            const att = (p.attack ?? 10) / 1000;
-            const rel = (p.release ?? 100) / 1000;
-            const outGain = p.output ?? 0;
+            const thresh = Math.max(-100, Math.min(0, p.threshold ?? -20));
+            const rat = Math.max(1, Math.min(20, p.ratio ?? 4));
+            const att = Math.max(0.0001, Math.min(0.999, (p.attack ?? 10) / 1000));
+            const rel = Math.max(0.001, Math.min(0.999, (p.release ?? 100) / 1000));
+            const outGain = Math.max(-60, Math.min(24, p.output ?? 0));
 
             const comp = new Tone.Compressor({
               threshold: thresh,
-              ratio: Math.max(1, rat),
-              attack: Math.max(0.0001, att),
-              release: Math.max(0.001, rel),
+              ratio: rat,
+              attack: att,
+              release: rel,
               knee: 3,
             });
             const gainNode = new Tone.Volume(outGain);
@@ -377,7 +378,7 @@ export class StereoChannel {
             const delayNode = new Tone.FeedbackDelay({
               delayTime: Math.max(0.001, Math.min(2.0, timeMs / 1000)),
               feedback: Math.max(0, Math.min(0.95, feedback / 100)),
-              wet: Math.max(0, Math.min(1.0, wetMix / 100)),
+              wet: Math.max(0, Math.min(0.999, wetMix / 100)),
             });
             const outputVol = new Tone.Volume(outGain);
 
@@ -386,28 +387,27 @@ export class StereoChannel {
           }
           case 'Limiter': {
             const p = slot.params || {};
-            const ceiling = p.ceiling ?? -0.5;
-            const drive = p.drive ?? 4.0;
-            const release = (p.release ?? 50) / 1000;
-            const sat = (p.diodeSat ?? 15) / 100;
+            const ceiling = Math.max(-60, Math.min(-0.01, p.ceiling ?? -0.5));
+            const drive = Math.max(-24, Math.min(24, p.drive ?? 4.0));
+            const release = Math.max(0.005, Math.min(0.999, (p.release ?? 50) / 1000));
+            const sat = Math.max(0, Math.min(0.999, (p.diodeSat ?? 15) / 100));
             const truePeak = p.truePeak ?? 1;
 
             const inputDrive = new Tone.Volume(drive);
             const dist = new Tone.Distortion({
-              distortion: Math.max(0.001, sat * 0.8),
-              wet: sat,
+              distortion: Math.max(0.001, Math.min(0.999, sat * 0.8)),
+              wet: Math.max(0, Math.min(0.999, sat)),
             });
             const limiter = new Tone.Compressor({
-              threshold: Math.min(-0.01, ceiling),
-              ratio: 50,
-              attack: 0.0002,
-              release: Math.max(0.005, release),
+              threshold: ceiling,
+              ratio: 20,
+              attack: 0.001,
+              release: release,
               knee: 0,
             });
-            const limitLinear = Math.pow(10, Math.min(-0.01, ceiling) / 20);
+            const limitLinear = Math.pow(10, ceiling / 20);
             const hardClipper = new Tone.WaveShaper({
               curve: createLimiterCurve(limitLinear, truePeak),
-              length: 1024,
             });
 
             createdNodes = [inputDrive, dist, limiter, hardClipper];
@@ -441,15 +441,24 @@ export class StereoChannel {
     this.activeEffectInstances = newInstances;
 
     if (nodes.length === 0) {
-      Tone.connect(this.input, this.preFaderNode);
+      try {
+        Tone.connect(this.input, this.preFaderNode);
+      } catch {}
       return;
     }
 
-    Tone.connect(this.input, nodes[0]);
-    for (let i = 0; i < nodes.length - 1; i++) {
-      Tone.connect(nodes[i], nodes[i + 1]);
+    try {
+      Tone.connect(this.input, nodes[0]);
+      for (let i = 0; i < nodes.length - 1; i++) {
+        Tone.connect(nodes[i], nodes[i + 1]);
+      }
+      Tone.connect(nodes[nodes.length - 1], this.preFaderNode);
+    } catch (err) {
+      console.warn('Error connecting effect chain nodes:', err);
+      try {
+        Tone.connect(this.input, this.preFaderNode);
+      } catch {}
     }
-    Tone.connect(nodes[nodes.length - 1], this.preFaderNode);
   }
 
   private updateVolume() {
@@ -602,11 +611,15 @@ export function useAudioEngine() {
 
       channel.connect(meter);
 
+      const hasSolo = tracks.some(t => t.soloed);
+      const isAudible = hasSolo ? (newTrack.soloed && !newTrack.muted) : !newTrack.muted;
+      channel.setMute(!isAudible);
+
       channelsRef.current.set(id, channel);
       analysersRef.current.set(id, { meter, fft: channel.fft, preFaderMeter: channel.preFaderMeter });
       setTracks(prev => [...prev, newTrack]);
     }
-  }, [tracks.length]);
+  }, [tracks]);
 
   const removeTrack = useCallback((trackId: string) => {
     const channel = channelsRef.current.get(trackId);
@@ -641,7 +654,18 @@ export function useAudioEngine() {
       analysersRef.current.delete(trackId);
     }
 
-    setTracks(prev => prev.filter(t => t.id !== trackId));
+    setTracks(prev => {
+      const nextTracks = prev.filter(t => t.id !== trackId);
+      const hasSolo = nextTracks.some(t => t.soloed);
+      nextTracks.forEach(t => {
+        const ch = channelsRef.current.get(t.id);
+        if (ch) {
+          const isAudible = hasSolo ? (t.soloed && !t.muted) : !t.muted;
+          ch.setMute(!isAudible);
+        }
+      });
+      return nextTracks;
+    });
   }, []);
 
   const togglePlay = useCallback(() => {
@@ -726,19 +750,31 @@ export function useAudioEngine() {
   }, []);
 
   const updateTrackParams = useCallback((trackId: string, params: Partial<Pick<Track, 'volume' | 'pan' | 'muted' | 'soloed'>>) => {
-    setTracks(prev => prev.map(t => {
-      if (t.id === trackId) {
-        const updated = { ...t, ...params };
-        const channel = channelsRef.current.get(trackId);
-        if (channel) {
-          if (params.volume !== undefined) channel.setVolume(params.volume);
-          if (params.pan !== undefined) channel.setPan(params.pan);
-          if (params.muted !== undefined) channel.setMute(params.muted);
+    setTracks(prev => {
+      const nextTracks = prev.map(t => {
+        if (t.id === trackId) {
+          const updated = { ...t, ...params };
+          const channel = channelsRef.current.get(trackId);
+          if (channel) {
+            if (params.volume !== undefined) channel.setVolume(updated.volume);
+            if (params.pan !== undefined) channel.setPan(updated.pan);
+          }
+          return updated;
         }
-        return updated;
-      }
-      return t;
-    }));
+        return t;
+      });
+
+      const hasSolo = nextTracks.some(t => t.soloed);
+      nextTracks.forEach(t => {
+        const channel = channelsRef.current.get(t.id);
+        if (channel) {
+          const isAudible = hasSolo ? (t.soloed && !t.muted) : !t.muted;
+          channel.setMute(!isAudible);
+        }
+      });
+
+      return nextTracks;
+    });
   }, []);
 
   const updateTrackEffect = useCallback((trackId: string, slotIndex: number, type: EffectType | null, bypassed?: boolean, params?: Record<string, number>) => {
@@ -832,8 +868,11 @@ export function useAudioEngine() {
         }
         masterBus.connect(Tone.getDestination());
 
+        const hasSolo = tracks.some(t => t.soloed);
+
         for (const track of tracks) {
-          if (track.muted) continue;
+          const isAudible = hasSolo ? (track.soloed && !track.muted) : !track.muted;
+          if (!isAudible) continue;
 
           const channel = new StereoChannel(rawCtx);
           channel.setVolume(track.volume);

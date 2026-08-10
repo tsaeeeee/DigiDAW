@@ -3,6 +3,7 @@ import { Play, Pause, Square, Plus, Sliders, Upload, Volume2, Mic, Activity, Clo
 import { motion, AnimatePresence } from 'motion/react';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { EffectRack } from './components/EffectRack';
+import { SystemPerformanceDisplay } from './components/SystemPerformanceDisplay';
 import { cn, formatTime } from './lib/utils';
 import { Track } from './types/daw';
 
@@ -186,6 +187,8 @@ export default function App() {
           <span className="text-sm tracking-widest">{formatTime(audio.currentTime)}</span>
           <div className="w-[1px] h-3.5 bg-[#333]" />
           <MiniAudioDisplay masterAnalyser={audio.masterAnalyser} isPlaying={audio.transportState === 'started'} />
+          <div className="w-[1px] h-3.5 bg-[#333]" />
+          <SystemPerformanceDisplay tracksCount={audio.tracks.length} isPlaying={audio.transportState === 'started'} />
         </div>
 
         <div className="flex-1 flex items-center justify-center px-8">

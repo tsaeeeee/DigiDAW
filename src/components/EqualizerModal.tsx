@@ -11,6 +11,8 @@ export interface EqualizerModalProps {
   isPlaying?: boolean;
   onUpdateParams: (slotIndex: number, bypassed: boolean, params: Record<string, number>) => void;
   onClose: () => void;
+  zIndex?: number;
+  onFocus?: () => void;
 }
 
 export type FilterShape = 'peaking' | 'highpass' | 'lowpass' | 'lowshelf' | 'highshelf';
@@ -192,7 +194,7 @@ function Knob({ label, value, min, max, step, defaultValue, displayValue, disabl
       const decimals = Math.max(1, Math.round(-Math.log10(step)));
       newVal = parseFloat(newVal.toFixed(decimals));
     }
-    return newVal;
+    return Math.max(min, Math.min(max, newVal));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -342,6 +344,8 @@ export function EqualizerModal({
   isPlaying,
   onUpdateParams,
   onClose,
+  zIndex,
+  onFocus,
 }: EqualizerModalProps) {
   // Modal Drag state
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
@@ -832,8 +836,9 @@ export function EqualizerModal({
 
   return (
     <div
-      style={{ top: `${position.y}px`, left: `${position.x}px` }}
-      className="fixed z-[300] w-[640px] bg-[#222224] border border-[#3e3e42] rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.9)] flex flex-col select-none overflow-hidden font-sans text-xs text-[#e0e0e0] animate-in fade-in zoom-in-95 duration-100"
+      onMouseDown={() => onFocus?.()}
+      style={{ top: `${position.y}px`, left: `${position.x}px`, zIndex: zIndex ?? 310 }}
+      className="fixed w-[640px] bg-[#222224] border border-[#3e3e42] rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.9)] flex flex-col select-none overflow-hidden font-sans text-xs text-[#e0e0e0] animate-in fade-in zoom-in-95 duration-100"
     >
       {/* Title Bar - Draggable Header */}
       <div
@@ -847,7 +852,7 @@ export function EqualizerModal({
             className={cn(
               "w-6 h-6 rounded-full border flex items-center justify-center transition-all",
               !isBypassed
-                ? "border-[#22c55e] text-[#22c55e] bg-[#22c55e]/10 shadow-[0_0_8px_rgba(34,197,94,0.4)]"
+                ? "border-[#ffd900] text-[#ffd900] bg-[#ffd900]/10 shadow-[0_0_8px_rgba(255,217,0,0.4)]"
                 : "border-[#555] text-[#777] bg-[#1a1a1a]"
             )}
           >
@@ -977,7 +982,7 @@ export function EqualizerModal({
             className={cn(
               'px-2.5 py-1 rounded text-xs font-semibold border transition-all flex items-center gap-1.5',
               !activeBand.bypass
-                ? 'bg-[#22c55e]/15 text-[#22c55e] border-[#22c55e]/40 shadow-[0_0_8px_rgba(34,197,94,0.3)]'
+                ? 'bg-[#ffd900]/15 text-[#ffd900] border-[#ffd900]/40 shadow-[0_0_8px_rgba(255,217,0,0.3)]'
                 : 'bg-[#1a1a1c] text-[#666] border-[#38383c]'
             )}
           >
