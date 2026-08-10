@@ -162,18 +162,24 @@ export function SystemPerformanceDisplay({ tracksCount, isPlaying }: SystemPerfo
       </div>
 
       {/* Numerical Metrics Display */}
-      <div className="flex flex-col gap-[1px] font-mono leading-none text-[8px]">
-        <div className="flex items-center gap-1">
-          <span className="text-[#666] font-bold">CPU</span>
-          <span className={cpu > 85 ? "text-red-500 font-bold" : cpu > 60 ? "text-yellow-400 font-bold" : "text-[#00f0ff] font-bold"}>
-            {cpu.toString().padStart(2, ' ')}%
-          </span>
+      <div className="flex items-center gap-1.5 font-mono leading-none text-[8px]">
+        {/* Labels Column */}
+        <div className="flex flex-col gap-[1px] text-[#666] font-bold w-[18px] shrink-0">
+          <div>CPU</div>
+          <div>RAM</div>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="text-[#666] font-bold">RAM</span>
-          <span className="text-[#ffd900] font-bold">
+
+        {/* Small Separator Div */}
+        <div className="w-[1px] h-3 bg-[#333] shrink-0" />
+
+        {/* Values Column with Fixed Width to Avoid Shifting Left Components */}
+        <div className="flex flex-col gap-[1px] font-bold text-right w-[30px] shrink-0">
+          <div className={cpu > 85 ? "text-red-500" : cpu > 60 ? "text-yellow-400" : "text-[#00f0ff]"}>
+            {cpu}%
+          </div>
+          <div className="text-[#ffd900]">
             {ramMB < 1000 ? `${ramMB}M` : `${(ramMB / 1024).toFixed(1)}G`}
-          </span>
+          </div>
         </div>
       </div>
 
