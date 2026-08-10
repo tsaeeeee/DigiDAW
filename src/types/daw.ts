@@ -1,3 +1,18 @@
+export type EffectType =
+  | 'Compressor'
+  | 'EQ'
+  | 'Reverb'
+  | 'Delay'
+  | 'Limiter'
+  | 'Saturator';
+
+export interface EffectSlot {
+  id: string;
+  type: EffectType | null;
+  bypassed?: boolean;
+  params?: Record<string, number>;
+}
+
 export interface AudioClip {
   id: string;
   name: string;
@@ -16,6 +31,7 @@ export interface Track {
   soloed: boolean;
   volume: number; // in dB
   pan: number; // -1 to 1
+  effects?: EffectSlot[];
 }
 
 export type TransportState = 'started' | 'stopped' | 'paused';

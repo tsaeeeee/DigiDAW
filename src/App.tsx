@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Play, Pause, Square, Plus, Sliders, Upload, Volume2, Mic, Activity, Clock, Trash2, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAudioEngine } from './hooks/useAudioEngine';
+import { EffectRack } from './components/EffectRack';
 import { cn, formatTime } from './lib/utils';
 import { Track } from './types/daw';
 
@@ -15,9 +16,42 @@ export default function App() {
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [zoom, setZoom] = useState(50); // PX_PER_SECOND
   const [snapIndicator, setSnapIndicator] = useState<{ time: number, type: 'head' | 'tail' | 'grid' } | null>(null);
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
-  const canAddTrack = audio.tracks.length < 50;
+  const canAddTrack = audio.tracks.length < 25;
+
+  const showToast = React.useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => {
+      setToast(prev => (prev === msg ? null : prev));
+    }, 3000);
+  }, []);
+
+  const handleNormalizeGain = React.useCallback(() => {
+    let count = 0;
+    let label = '';
+
+    if (selectedClipId) {
+      count = audio.normalizeGain([], [selectedClipId], -1);
+      label = 'selected clip';
+    } else if (selectedTrackId) {
+      const track = audio.tracks.find(t => t.id === selectedTrackId);
+      count = audio.normalizeGain([selectedTrackId], [], -1);
+      label = track ? `track "${track.name}"` : 'selected track';
+    } else {
+      count = audio.normalizeGain([], [], -1);
+      label = 'all tracks';
+    }
+
+    if (count > 0) {
+      showToast(`Normalized ${label} (${count} clip${count > 1 ? 's' : ''}) to -1.0 dB peak`);
+    } else {
+      showToast(`No audio clip found to normalize in ${label}`);
+    }
+  }, [selectedClipId, selectedTrackId, audio, showToast]);
 
   const getSnapPoints = React.useCallback((excludeClipId: string): number[] => {
     const points: number[] = [0, audio.currentTime];
@@ -48,7 +82,10 @@ export default function App() {
         return;
       }
 
-      if (e.code === 'Space') {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G' || e.code === 'KeyG')) {
+        e.preventDefault();
+        handleNormalizeGain();
+      } else if (e.code === 'Space') {
         e.preventDefault();
         audio.togglePlay();
       } else if (e.code === 'KeyM') {
@@ -67,22 +104,23 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [audio, canAddTrack]);
+  }, [audio, canAddTrack, handleNormalizeGain]);
 
   const handleDeleteTrack = (id: string) => {
     audio.removeTrack(id);
+    if (selectedTrackId === id) setSelectedTrackId(null);
   };
 
   if (!audio.isInitialized) {
     return (
-      <div className="h-screen w-screen bg-[#151619] flex flex-col items-center justify-center text-white font-sans">
+      <div className="h-screen w-screen bg-[#151619] flex flex-col items-center justify-between py-12 px-6 text-white font-sans select-none">
+        <div />
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center space-y-4"
+          className="text-center space-y-6 max-w-md"
         >
-          {/* Replace this SVG block with your own SVG code */}
-          <div className="w-16 h-16 mx-auto text-[#ffd900] animate-pulse">
+          <div className="w-20 h-20 mx-auto text-[#ffd900] animate-pulse">
             <svg 
               viewBox="0 0 24 24" 
               fill="none" 
@@ -95,15 +133,20 @@ export default function App() {
               <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight uppercase">DigiDAW</h1>
-          <p className="text-[#8e9299] max-w-xs mx-auto">Creative Linear Workflow Web DAW</p>
+          <div>
+            <h1 className="text-4xl font-black tracking-tight text-white">DigiDAW</h1>
+            <p className="text-[#8e9299] text-sm mt-2 font-medium">Professional Linear Audio Workstation for Mixing &amp; Mastering</p>
+          </div>
           <button 
             onClick={() => audio.init()}
-            className="mt-8 px-8 py-3 bg-[#ffd900] hover:bg-[#ffd900]/80 transition-colors rounded-full font-bold uppercase tracking-widest text-sm text-black"
+            className="mt-6 px-8 py-3.5 bg-[#ffd900] hover:bg-[#ffe55c] active:scale-95 transition-all rounded-full font-bold tracking-wider text-sm text-black shadow-lg shadow-[#ffd900]/20 cursor-pointer"
           >
             Launch
           </button>
         </motion.div>
+        <div className="text-xs text-[#71717a] font-medium tracking-wide">
+          Powered by Crescentials Record
+        </div>
       </div>
     );
   }
@@ -120,7 +163,7 @@ export default function App() {
                 <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
               </svg>
             </div>
-            <span className="text-[#ffd900] font-display font-black text-lg tracking-tighter">DigiDAW</span>
+            <span className="text-[#ffd900] font-display font-black text-sm tracking-tight">DigiDAW</span>
           </div>
           
           <div className="flex items-center gap-1.5">
@@ -139,8 +182,10 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 bg-black border border-[#444] rounded-sm px-4 py-1 font-lcd text-[#ffd900] text-sm tracking-widest shadow-inner min-w-[140px] justify-center">
-          <span>{formatTime(audio.currentTime)}</span>
+        <div className="flex items-center gap-3 bg-black border border-[#444] rounded-sm px-3 py-1 font-lcd text-[#ffd900] shadow-inner">
+          <span className="text-sm tracking-widest">{formatTime(audio.currentTime)}</span>
+          <div className="w-[1px] h-3.5 bg-[#333]" />
+          <MiniAudioDisplay masterAnalyser={audio.masterAnalyser} isPlaying={audio.transportState === 'started'} />
         </div>
 
         <div className="flex-1 flex items-center justify-center px-8">
@@ -160,6 +205,14 @@ export default function App() {
 
         <div className="flex items-center gap-2">
           <button 
+            onClick={handleNormalizeGain}
+            title="Normalize Gain to -1dB (Cmd+G / Ctrl+G)"
+            className="flex items-center justify-center w-8 h-7 rounded-sm transition-all border bg-[#3a3a3a] border-[#ffd900]/40 text-[#ffd900] hover:bg-[#ffd900] hover:text-black hover:border-[#ffd900]"
+          >
+            <Volume2 className="w-3.5 h-3.5" />
+          </button>
+
+          <button 
             onClick={() => setShowMixer(!showMixer)}
             title="Toggle Mixer"
             className={cn(
@@ -175,7 +228,7 @@ export default function App() {
           <button 
             onClick={audio.addTrack}
             disabled={!canAddTrack}
-            title={canAddTrack ? "Add Track" : "Track limit reached (50)"}
+            title={canAddTrack ? "Add Track" : "Track limit reached (25)"}
             className={cn(
               "flex items-center justify-center w-8 h-7 transition-all border rounded-sm",
               canAddTrack 
@@ -184,19 +237,6 @@ export default function App() {
             )}
           >
             <Plus className="w-3.5 h-3.5" />
-          </button>
-
-          <button 
-            onClick={() => setSnapEnabled(!snapEnabled)}
-            title={`Toggle Snapping (${snapEnabled ? 'On' : 'Off'}) - Press 'S'`}
-            className={cn(
-              "flex items-center justify-center w-8 h-7 rounded-sm transition-all border",
-              snapEnabled 
-                ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/50 hover:bg-cyan-500/30" 
-                : "bg-[#3a3a3a] border-[#444] text-[#8e9299] hover:bg-[#444]"
-            )}
-          >
-            <Activity className={cn("w-3.5 h-3.5", snapEnabled && "animate-pulse")} />
           </button>
 
           <button 
@@ -212,6 +252,21 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-14 left-1/2 -translate-x-1/2 z-[100] bg-[#1a1a1a] text-[#ffd900] border border-[#ffd900]/60 px-4 py-2 rounded-md shadow-2xl flex items-center gap-2 font-mono text-xs font-bold pointer-events-none"
+          >
+            <Volume2 className="w-4 h-4 text-[#ffd900] animate-pulse" />
+            <span>{toast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 2. Main Area: Timeline */}
       <main className="flex-1 overflow-hidden relative">
@@ -229,6 +284,11 @@ export default function App() {
                 <TrackHeader
                   key={track.id}
                   track={track}
+                  isSelected={selectedTrackId === track.id}
+                  onSelect={() => {
+                    setSelectedTrackId(track.id);
+                    setSelectedClipId(null);
+                  }}
                   updateParams={audio.updateTrackParams}
                   onUpload={(file) => audio.uploadClip(track.id, file)}
                   onDelete={() => handleDeleteTrack(track.id)}
@@ -258,23 +318,36 @@ export default function App() {
 
               {/* Track lanes */}
               {audio.tracks.map(track => (
-                <div key={track.id}
-                  className="h-[80px] border-b border-[#333] relative group z-10"
+                <div 
+                  key={track.id}
+                  onClick={() => {
+                    setSelectedTrackId(track.id);
+                    setSelectedClipId(null);
+                  }}
+                  className={cn(
+                    "h-[80px] border-b relative group z-10 transition-colors",
+                    selectedTrackId === track.id ? "border-[#ffd900]/30 bg-white/[0.02]" : "border-[#333]"
+                  )}
                 >
                   {track.clips.map(clip => (
                     <AudioClipItem
                       key={clip.id}
                       clip={clip}
                       color={track.color}
-                    onMove={(newStart) => audio.updateClipPosition(track.id, clip.id, newStart)}
-                    getSnapPoints={() => getSnapPoints(clip.id)}
-                    onSnapIndicator={setSnapIndicator}
-                    snapEnabled={snapEnabled}
-                    zoom={zoom}
-                  />
-                ))}
-              </div>
-            ))}
+                      isSelected={selectedClipId === clip.id}
+                      onSelect={() => {
+                        setSelectedClipId(clip.id);
+                        setSelectedTrackId(track.id);
+                      }}
+                      onMove={(newStart) => audio.updateClipPosition(track.id, clip.id, newStart)}
+                      getSnapPoints={() => getSnapPoints(clip.id)}
+                      onSnapIndicator={setSnapIndicator}
+                      snapEnabled={snapEnabled}
+                      zoom={zoom}
+                    />
+                  ))}
+                </div>
+              ))}
 
             {/* Snap indicator — only visible during drag */}
             {snapIndicator !== null && (
@@ -312,7 +385,9 @@ export default function App() {
                 key={track.id} 
                 track={track} 
                 updateParams={audio.updateTrackParams}
+                updateEffect={(slotIndex, type, bypassed, params) => audio.updateTrackEffect(track.id, slotIndex, type, bypassed, params)}
                 analyser={audio.analysers.get(track.id)}
+                isPlaying={audio.transportState === 'started'}
               />
             ))}
             
@@ -320,8 +395,10 @@ export default function App() {
             <ChannelStrip 
               track={audio.master}
               updateParams={audio.updateMasterParams}
+              updateEffect={(slotIndex, type, bypassed, params) => audio.updateMasterEffect(slotIndex, type, bypassed, params)}
               analyser={audio.masterAnalyser}
               isMaster={true}
+              isPlaying={audio.transportState === 'started'}
             />
 
             <button 
@@ -331,13 +408,15 @@ export default function App() {
                 "min-w-[80px] h-full border-l border-[#333] border-dashed flex flex-col items-center justify-center transition-opacity cursor-pointer group",
                 canAddTrack ? "opacity-20 hover:opacity-50" : "opacity-5 cursor-not-allowed"
               )}
-              title={canAddTrack ? "Add Track" : "Track limit reached (50)"}
+              title={canAddTrack ? "Add Track" : "Track limit reached (25)"}
             >
               <Plus className={cn("w-6 h-6", canAddTrack ? "text-[#ffd900]" : "text-[#555]")} />
             </button>
           </motion.footer>
         )}
       </AnimatePresence>
+
+
     </div>
   );
 }
@@ -362,21 +441,31 @@ function TransportButton({ icon, onClick, active, label }: { icon: React.ReactNo
 interface TrackHeaderProps {
   key?: React.Key;
   track: Track;
+  isSelected?: boolean;
+  onSelect?: () => void;
   updateParams: any;
   onUpload: (f: File) => void;
   onDelete: () => void;
   onRename: (name: string) => void;
 }
 
-function TrackHeader({ track, updateParams, onUpload, onDelete, onRename }: TrackHeaderProps) {
+function TrackHeader({ track, isSelected, onSelect, updateParams, onUpload, onDelete, onRename }: TrackHeaderProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [tempName, setTempName] = useState(track.name);
 
   return (
-    <div className="h-[80px] border-b border-[#333] flex group bg-[#252525] transition-colors relative shrink-0">
+    <div 
+      onClick={onSelect}
+      className={cn(
+        "h-[80px] border-b flex group transition-all relative shrink-0 cursor-pointer",
+        isSelected ? "bg-[#2d2a1d] border-[#ffd900]/80 shadow-[inset_0_0_10px_rgba(255,217,0,0.15)]" : "bg-[#252525] border-[#333] hover:bg-[#2a2a2a]"
+      )}
+    >
       {/* Fixed color indicator on the far left */}
-      <div className="w-1.5 shrink-0 h-full" style={{ backgroundColor: track.color }} />
+      <div className="w-1.5 shrink-0 h-full relative" style={{ backgroundColor: track.color }}>
+        {isSelected && <div className="absolute inset-0 bg-[#ffd900] animate-pulse" />}
+      </div>
       
       {/* Content with padding */}
       <div className="flex-1 flex flex-col justify-between p-2 pl-3">
@@ -393,7 +482,10 @@ function TrackHeader({ track, updateParams, onUpload, onDelete, onRename }: Trac
           ) : (
             <span 
               onDoubleClick={() => setIsEditing(true)}
-              className="text-[11px] font-bold uppercase tracking-tight text-[#e0e0e0] truncate max-w-[120px] cursor-text"
+              className={cn(
+                "text-[11px] font-bold uppercase tracking-tight truncate max-w-[120px] cursor-text",
+                isSelected ? "text-[#ffd900]" : "text-[#e0e0e0]"
+              )}
             >
               {track.name}
             </span>
@@ -430,7 +522,7 @@ function TrackHeader({ track, updateParams, onUpload, onDelete, onRename }: Trac
         <div className="flex items-end gap-2">
           <div className="flex gap-1">
             <button 
-              onClick={() => updateParams(track.id, { muted: !track.muted })}
+              onClick={(e) => { e.stopPropagation(); updateParams(track.id, { muted: !track.muted }); }}
               className={cn(
                 "w-[22px] h-[22px] rounded-sm text-[9px] font-bold transition-all flex items-center justify-center border",
                 track.muted ? "bg-[#facc15] text-black border-[#ca8a04]" : "bg-[#1a1a1a] text-[#8e9299] border-[#333]"
@@ -439,7 +531,7 @@ function TrackHeader({ track, updateParams, onUpload, onDelete, onRename }: Trac
               M
             </button>
             <button 
-              onClick={() => updateParams(track.id, { soloed: !track.soloed })}
+              onClick={(e) => { e.stopPropagation(); updateParams(track.id, { soloed: !track.soloed }); }}
               className={cn(
                 "w-[22px] h-[22px] rounded-sm text-[9px] font-bold transition-all flex items-center justify-center border",
                 track.soloed ? "bg-[#fb923c] text-black border-[#ea580c]" : "bg-[#1a1a1a] text-[#8e9299] border-[#333]"
@@ -448,8 +540,8 @@ function TrackHeader({ track, updateParams, onUpload, onDelete, onRename }: Trac
               S
             </button>
           </div>
-          <div className="flex-1 text-[9px] text-[#666] font-mono mb-1 truncate">
-            Audio Channel
+          <div className="flex-1 text-[9px] text-[#666] font-mono mb-1 truncate flex items-center justify-between">
+            <span>Audio Channel</span>
           </div>
         </div>
       </div>
@@ -461,6 +553,8 @@ interface AudioClipItemProps {
   key?: React.Key;
   clip: any;
   color: string;
+  isSelected?: boolean;
+  onSelect?: () => void;
   onMove: (newStartTime: number) => void;
   getSnapPoints: () => number[];
   onSnapIndicator: (snap: { time: number, type: 'head' | 'tail' | 'grid' } | null) => void;
@@ -505,7 +599,7 @@ function applySnap(
   };
 }
 
-function AudioClipItem({ clip, color, onMove, getSnapPoints, onSnapIndicator, snapEnabled, zoom }: AudioClipItemProps) {
+function AudioClipItem({ clip, color, isSelected, onSelect, onMove, getSnapPoints, onSnapIndicator, snapEnabled, zoom }: AudioClipItemProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [visualStartTime, setVisualStartTime] = useState(clip.startTime);
   const isDragging = React.useRef(false);
@@ -528,7 +622,7 @@ function AudioClipItem({ clip, color, onMove, getSnapPoints, onSnapIndicator, sn
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.beginPath();
     ctx.moveTo(0, amp);
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = isSelected ? '#ffd900' : color;
     ctx.lineWidth = 1;
 
     for (let i = 0; i < canvas.width; i++) {
@@ -543,10 +637,11 @@ function AudioClipItem({ clip, color, onMove, getSnapPoints, onSnapIndicator, sn
       ctx.lineTo(i, amp + (max * amp));
     }
     ctx.stroke();
-  }, [clip.buffer, color]);
+  }, [clip.buffer, color, isSelected]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
+    onSelect?.();
     
     const timeline = document.getElementById('timeline-column');
     if (!timeline) return;
@@ -622,25 +717,34 @@ function AudioClipItem({ clip, color, onMove, getSnapPoints, onSnapIndicator, sn
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       className={cn(
-        "absolute top-1 bottom-1 rounded border overflow-hidden flex flex-col bg-black/40 cursor-grab active:cursor-grabbing hover:bg-black/60 transition-colors z-20 origin-left",
-        isDragging.current && "opacity-80 border-white shadow-xl scale-[1.02]"
+        "absolute top-1 bottom-1 rounded border overflow-hidden flex flex-col bg-black/40 cursor-grab active:cursor-grabbing hover:bg-black/60 transition-colors z-20 origin-left select-none",
+        isDragging.current && "opacity-80 border-white shadow-xl scale-[1.02]",
+        isSelected && "border-[#ffd900] ring-2 ring-[#ffd900]/70 shadow-[0_0_12px_rgba(255,217,0,0.5)] z-30"
       )}
       style={{
         left: `${visualStartTime * zoom}px`,
         width: `${clip.duration * zoom}px`,
-        borderColor: `${color}80`
+        borderColor: isSelected ? '#ffd900' : `${color}80`
       }}
       onMouseDown={handleMouseDown}
-      onClick={(e: React.MouseEvent) => e.stopPropagation()}
+      onClick={(e: React.MouseEvent) => {
+        e.stopPropagation();
+        onSelect?.();
+      }}
     >
       <canvas
         ref={canvasRef}
-        className="w-full h-full opacity-60 pointer-events-none"
+        className="w-full h-full opacity-70 pointer-events-none"
         width={clip.duration * zoom}
         height={60}
       />
-      <div className="absolute inset-x-0 bottom-0 h-4 bg-black/40 flex items-center px-1 pointer-events-none">
-        <span className="text-[8px] text-white/50 font-medium truncate">{clip.name}</span>
+      <div className={cn(
+        "absolute inset-x-0 bottom-0 h-4 flex items-center justify-between px-1 pointer-events-none transition-colors",
+        isSelected ? "bg-[#ffd900]/20 font-bold" : "bg-black/40"
+      )}>
+        <span className={cn("text-[8px] font-medium truncate", isSelected ? "text-[#ffd900]" : "text-white/50")}>
+          {clip.name}
+        </span>
       </div>
     </motion.div>
   );
@@ -650,11 +754,13 @@ interface ChannelStripProps {
   key?: React.Key;
   track: any; // Can be Track or Master object
   updateParams: any;
+  updateEffect: (slotIndex: number, type: any, bypassed?: boolean, params?: Record<string, number>) => void;
   analyser?: any;
   isMaster?: boolean;
+  isPlaying?: boolean;
 }
 
-function ChannelStrip({ track, updateParams, analyser, isMaster }: ChannelStripProps) {
+function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, isPlaying }: ChannelStripProps) {
   const meterCanvasRef = React.useRef<HTMLCanvasElement>(null);
 
   const dbToLevel = (db: number) => {
@@ -688,12 +794,26 @@ function ChannelStrip({ track, updateParams, analyser, isMaster }: ChannelStripP
       meterCtx.fillStyle = gradient;
       
       // Left and Right channels - Logarithmic scaling
-      meterLevels.forEach((db, index) => {
-        const level = dbToLevel(db);
-        const h = level * meterH;
-        const x = index * (meterW / 2);
-        meterCtx.fillRect(x + 1, meterH - h, (meterW / 2) - 2, h);
-      });
+      const colW = Math.floor((meterW - 1) / 2);
+      
+      const dbL = meterLevels[0] !== undefined ? meterLevels[0] : -100;
+      const dbR = meterLevels[1] !== undefined ? meterLevels[1] : dbL;
+
+      const levelL = dbToLevel(dbL);
+      const levelR = dbToLevel(dbR);
+
+      const hL = levelL * meterH;
+      const hR = levelR * meterH;
+
+      // Draw Left channel (x: 0 to colW)
+      meterCtx.fillRect(0, meterH - hL, colW, hL);
+
+      // Draw Right channel (x: meterW - colW to meterW)
+      meterCtx.fillRect(meterW - colW, meterH - hR, colW, hR);
+
+      // Draw 1px middle gap/divider
+      meterCtx.fillStyle = '#000';
+      meterCtx.fillRect(colW, 0, meterW - colW * 2, meterH);
 
       frameId = requestAnimationFrame(render);
     };
@@ -706,7 +826,7 @@ function ChannelStrip({ track, updateParams, analyser, isMaster }: ChannelStripP
 
   return (
     <div className={cn(
-      "min-w-[100px] w-[100px] h-full border-r border-black flex flex-col p-1.5 items-center gap-1.5 relative shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]",
+      "min-w-[100px] w-[100px] h-full border-r border-black flex flex-col p-1.5 items-center gap-1 relative shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]",
       isMaster ? "bg-[#3a351a] border-l-2 border-l-[#ffd900]/20" : "bg-[#2a2a2a]"
     )}>
       {!isMaster && (
@@ -724,12 +844,14 @@ function ChannelStrip({ track, updateParams, analyser, isMaster }: ChannelStripP
         </label>
       )}
       
-      {/* Effect Rack */}
-      <div className="w-full h-20 bg-[#151515] border border-black rounded-sm p-1 flex flex-col gap-0.5 mt-2 mb-4">
-        {['Comp', 'EQ', 'Rev'].map(fx => (
-          <div key={fx} className="h-4 bg-[#25262b] border border-[#333] text-[8px] flex items-center px-1 text-[#888] rounded-[1px] hover:bg-[#2c2d33] cursor-pointer transition-colors tracking-wide">{fx}</div>
-        ))}
-      </div>
+      {/* Dynamic Effect Rack */}
+      <EffectRack
+        effects={track.effects}
+        onUpdateEffect={updateEffect}
+        isMaster={isMaster}
+        analyser={analyser}
+        isPlaying={isPlaying}
+      />
 
       {/* Immersive Panning Slider */}
       <div className="w-full h-8 flex flex-col items-center justify-center relative mb-4 px-1">
@@ -802,11 +924,11 @@ function ChannelStrip({ track, updateParams, analyser, isMaster }: ChannelStripP
           </div>
 
           <div className="flex-1 flex gap-2 justify-center h-full">
-            {/* Level Meter (Inline) */}
-            <div className="h-full flex relative flex-1 max-w-[8px]">
+            {/* Level Meter (Inline Stereo L/R) */}
+            <div className="h-full flex relative flex-1 max-w-[12px]">
               <canvas 
                 ref={meterCanvasRef} 
-                width={8} 
+                width={12} 
                 height={210} 
                 className="w-full h-full bg-black/60 rounded-sm border border-black/80" 
               />
@@ -886,6 +1008,211 @@ function ChannelStrip({ track, updateParams, analyser, isMaster }: ChannelStripP
         )}>
             <span className="text-[9px] font-bold truncate px-1 uppercase tracking-tighter">{track.name}</span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface MiniAudioDisplayProps {
+  masterAnalyser: { meter: any; fft: any } | null;
+  isPlaying: boolean;
+}
+
+function MiniAudioDisplay({ masterAnalyser, isPlaying }: MiniAudioDisplayProps) {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const [mode, setMode] = useState<'spectrum' | 'peak'>('peak');
+
+  const dbToLevel = (db: number) => {
+    if (!isFinite(db) || isNaN(db)) return 0;
+    return Math.pow(Math.max(0, (db + 60) / 66), 1.5);
+  };
+
+  React.useEffect(() => {
+    let animId: number;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let peakL = 0;
+    let peakR = 0;
+
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (mode === 'spectrum') {
+        const numBars = 12;
+        const barGap = 1.5;
+        const barWidth = (canvas.width - (numBars - 1) * barGap) / numBars;
+
+        let values: Float32Array | number[] | null = null;
+        if (masterAnalyser?.fft) {
+          try {
+            const raw = masterAnalyser.fft.getValue();
+            if (raw instanceof Float32Array || Array.isArray(raw)) {
+              values = raw;
+            }
+          } catch {
+            values = null;
+          }
+        }
+
+        for (let i = 0; i < numBars; i++) {
+          let heightPercent = 0;
+
+          if (values && values.length > 0) {
+            const totalBins = values.length;
+            const fMin = 40;
+            const fMax = 16000;
+            const nyquist = 22050;
+
+            const f1 = fMin * Math.pow(fMax / fMin, i / numBars);
+            const f2 = fMin * Math.pow(fMax / fMin, (i + 1) / numBars);
+
+            const bin1 = Math.max(0, Math.floor((f1 / nyquist) * totalBins));
+            const bin2 = Math.min(totalBins - 1, Math.max(bin1 + 1, Math.floor((f2 / nyquist) * totalBins)));
+
+            let maxDb = -120;
+            for (let b = bin1; b <= bin2; b++) {
+              const val = values[b] as number;
+              if (typeof val === 'number' && isFinite(val) && val > maxDb) {
+                maxDb = val;
+              }
+            }
+
+            if (maxDb > -100) {
+              const tiltOffset = (i - 2) * 1.8;
+              const compensatedDb = maxDb + tiltOffset;
+              heightPercent = dbToLevel(compensatedDb);
+            }
+          }
+
+          const barHeight = Math.max(0, heightPercent * canvas.height);
+          const x = i * (barWidth + barGap);
+          const y = canvas.height - barHeight;
+
+          const grad = ctx.createLinearGradient(0, canvas.height, 0, 0);
+          grad.addColorStop(0, '#15803d');
+          grad.addColorStop(0.4, '#22c55e');
+          grad.addColorStop(0.75, '#facc15');
+          grad.addColorStop(1, '#ef4444');
+
+          if (barHeight > 0) {
+            ctx.fillStyle = grad;
+            ctx.fillRect(x, y, barWidth, barHeight);
+          } else {
+            ctx.fillStyle = '#222';
+            ctx.fillRect(x, canvas.height - 1, barWidth, 1);
+          }
+        }
+      } else {
+        // Peak Meter Mode (Stereo L / R)
+        let dbL = -100;
+        let dbR = -100;
+        if (masterAnalyser?.meter) {
+          try {
+            const val = masterAnalyser.meter.getValue();
+            if (Array.isArray(val) || val instanceof Float32Array) {
+              dbL = typeof val[0] === 'number' && !isNaN(val[0]) ? val[0] : -100;
+              dbR = typeof val[1] === 'number' && !isNaN(val[1]) ? val[1] : -100;
+            } else if (typeof val === 'number' && !isNaN(val)) {
+              dbL = val;
+              dbR = val;
+            }
+          } catch {
+            dbL = -100;
+            dbR = -100;
+          }
+        }
+
+        let targetL = dbToLevel(dbL);
+        let targetR = dbToLevel(dbR);
+
+        // Smooth decay matching master channel meter
+        peakL = Math.max(targetL, peakL * 0.85);
+        peakR = Math.max(targetR, peakR * 0.85);
+
+        const meterHeight = (canvas.height - 3) / 2;
+        const labelWidth = 7;
+        const startX = labelWidth + 2;
+        const barWidth = canvas.width - startX - 1;
+
+        const labels = ['L', 'R'];
+        const levels = [peakL, peakR];
+
+        levels.forEach((level, idx) => {
+          const y = 1 + idx * (meterHeight + 1);
+          const fillWidth = level * barWidth;
+
+          // Channel Label (L / R)
+          ctx.fillStyle = '#888';
+          ctx.font = 'bold 7px Roboto, sans-serif';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(labels[idx], 1, y + meterHeight / 2);
+
+          // Background bar track
+          ctx.fillStyle = '#151515';
+          ctx.fillRect(startX, y, barWidth, meterHeight);
+
+          // Gradient fill identical to Master Channel Strip (Green -> Yellow -> Red)
+          const grad = ctx.createLinearGradient(startX, 0, startX + barWidth, 0);
+          grad.addColorStop(0, '#15803d');
+          grad.addColorStop(0.4, '#22c55e');
+          grad.addColorStop(0.75, '#facc15');
+          grad.addColorStop(1, '#ef4444');
+
+          ctx.fillStyle = fillWidth > 0.5 ? grad : '#222';
+          ctx.fillRect(startX, y, Math.max(0, fillWidth), meterHeight);
+        });
+      }
+
+      animId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      cancelAnimationFrame(animId);
+    };
+  }, [masterAnalyser, isPlaying, mode]);
+
+  return (
+    <div className="flex items-center gap-1.5 select-none">
+      <canvas 
+        ref={canvasRef} 
+        width={56} 
+        height={18} 
+        onClick={() => setMode(m => m === 'spectrum' ? 'peak' : 'spectrum')}
+        className="rounded-[2px] bg-black/80 border border-[#333] hover:border-[#ffd900]/60 transition-colors cursor-pointer"
+        title={`Master ${mode === 'spectrum' ? 'Real-Time Spectrum (RTA)' : 'Peak Meter (VU)'} - Click canvas to toggle mode`}
+      />
+      <div className="flex flex-col gap-[1px] justify-center">
+        <button
+          type="button"
+          onClick={() => setMode('spectrum')}
+          className={cn(
+            "px-1 py-[1px] text-[7px] font-mono font-bold leading-none rounded-[1px] transition-all cursor-pointer border",
+            mode === 'spectrum'
+              ? "bg-[#ffd900] text-black border-[#ffd900]"
+              : "bg-[#1f1f1f] text-[#666] border-[#333] hover:text-[#aaa] hover:bg-[#2a2a2a]"
+          )}
+          title="Switch to Real-Time Spectrum (RTA)"
+        >
+          RTA
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('peak')}
+          className={cn(
+            "px-1 py-[1px] text-[7px] font-mono font-bold leading-none rounded-[1px] transition-all cursor-pointer border",
+            mode === 'peak'
+              ? "bg-[#ffd900] text-black border-[#ffd900]"
+              : "bg-[#1f1f1f] text-[#666] border-[#333] hover:text-[#aaa] hover:bg-[#2a2a2a]"
+          )}
+          title="Switch to Peak Meter (VU)"
+        >
+          VU
+        </button>
       </div>
     </div>
   );
