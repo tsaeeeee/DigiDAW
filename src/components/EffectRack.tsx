@@ -111,7 +111,7 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
               key={slot.id || `slot-${idx}`}
               onClick={(e) => handleSlotClick(e, idx, slot)}
               className={cn(
-                "h-[18px] w-full rounded-[2px] border text-[8px] font-mono flex items-center justify-between px-1 cursor-pointer transition-all select-none group relative",
+                "h-[18px] w-full rounded-[2px] border text-[8px] kumbh-sans flex items-center justify-between px-1 cursor-pointer transition-all select-none group relative",
                 isOccupied
                   ? isBypassed
                     ? "bg-[#1c1c20] border-[#333] text-[#666]"
@@ -124,19 +124,19 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
                   <div className="flex items-center gap-1 truncate">
                     <span
                       className={cn(
-                        "px-1 py-[0.5px] rounded-[1px] text-[7px] font-black tracking-tight shrink-0",
+                        "px-1 py-[0.5px] rounded-[1px] text-[7px] font-black tracking-tight shrink-0 kumbh-sans",
                         isBypassed ? "bg-[#333] text-[#777]" : "text-black font-bold"
                       )}
                       style={{ backgroundColor: isBypassed ? undefined : fxMeta.color }}
                     >
                       {fxMeta.shortCode}
                     </span>
-                    <span className={cn("truncate font-medium text-[8px]", isBypassed ? "line-through opacity-60" : "text-white")}>
+                    <span className={cn("truncate font-medium text-[8px] kumbh-sans", isBypassed ? "line-through opacity-60" : "text-white")}>
                       {fxMeta.name}
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[7px] italic text-[#444] group-hover:text-[#666]">
+                  <span className="text-[7px] italic text-[#444] group-hover:text-[#666] kumbh-sans">
                     Insert FX
                   </span>
                 )}
@@ -404,7 +404,7 @@ function EffectPickerModal({ slotIndex, currentType, anchorRect, onClose, onSele
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span
-                    className="text-[8px] font-black font-mono px-1 rounded-sm text-black shrink-0"
+                    className="text-[8px] font-black kumbh-sans px-1 rounded-sm text-black shrink-0"
                     style={{ backgroundColor: fx.color }}
                   >
                     {fx.shortCode}

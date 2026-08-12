@@ -4,7 +4,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { EffectRack } from './components/EffectRack';
 import { SystemPerformanceDisplay } from './components/SystemPerformanceDisplay';
-import { cn, formatTime } from './lib/utils';
+import { MetronomeBpmControl } from './components/MetronomeBpmControl';
+import { TimelineRuler } from './components/TimelineRuler';
+import { cn, formatTime, formatBarBeatTime } from './lib/utils';
 import { Track } from './types/daw';
 
 const SNAP_THRESHOLD_PX = 12;
@@ -54,18 +56,6 @@ export default function App() {
     }
   }, [selectedClipId, selectedTrackId, audio, showToast]);
 
-  const getSnapPoints = React.useCallback((excludeClipId: string): number[] => {
-    const points: number[] = [0, audio.currentTime];
-    for (const track of audio.tracks) {
-      for (const clip of track.clips) {
-        if (clip.id === excludeClipId) continue;
-        points.push(clip.startTime);
-        points.push(clip.startTime + clip.duration);
-      }
-    }
-    return points;
-  }, [audio.tracks, audio.currentTime]);
-
   // Calculate dynamic timeline duration based on longest clip
   const maxTrackTime = audio.tracks.reduce((max, track) => {
     const trackMax = track.clips.reduce((tMax, clip) => Math.max(tMax, clip.startTime + clip.duration), 0);
@@ -75,6 +65,26 @@ export default function App() {
   // Minimum visible duration of 30 seconds, expands with content and playhead
   const timelineDuration = Math.max(30, maxTrackTime + 10, audio.currentTime + 10);
   const timelineWidth = timelineDuration * zoom;
+
+  const getSnapPoints = React.useCallback((excludeClipId: string): number[] => {
+    const points: number[] = [0, audio.currentTime];
+    for (const track of audio.tracks) {
+      for (const clip of track.clips) {
+        if (clip.id === excludeClipId) continue;
+        points.push(clip.startTime);
+        points.push(clip.startTime + clip.duration);
+      }
+    }
+
+    // Include beat grid snap points based on BPM
+    const secondsPerBeat = 60 / audio.bpm;
+    const totalBeats = Math.ceil(timelineDuration / secondsPerBeat);
+    for (let b = 0; b <= totalBeats; b++) {
+      points.push(b * secondsPerBeat);
+    }
+
+    return points;
+  }, [audio.tracks, audio.currentTime, audio.bpm, timelineDuration]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -91,6 +101,8 @@ export default function App() {
         audio.togglePlay();
       } else if (e.code === 'KeyM') {
         setShowMixer(prev => !prev);
+      } else if (e.code === 'KeyC') {
+        audio.toggleMetronome();
       } else if (e.code === 'KeyS' && !e.metaKey && !e.ctrlKey) {
         // Toggle snapping unless it's a save shortcut
         setSnapEnabled(prev => !prev);
@@ -183,12 +195,25 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 bg-black border border-[#444] rounded-sm px-3 py-1 font-lcd text-[#ffd900] shadow-inner">
-          <span className="text-sm tracking-widest">{formatTime(audio.currentTime)}</span>
-          <div className="w-[1px] h-3.5 bg-[#333]" />
+        <div className="flex items-center gap-3 bg-black border border-[#444] rounded-sm px-3 py-1 text-[#ffd900] shadow-inner select-none">
+          <div className="flex flex-col items-center">
+            <span className="text-xs font-bold tracking-widest major-mono-display-regular leading-none">{formatTime(audio.currentTime)}</span>
+            <span className="text-[9px] tracking-wider text-[#aaa] major-mono-display-regular leading-none mt-0.5">{formatBarBeatTime(audio.currentTime, audio.bpm)}</span>
+          </div>
+          <div className="w-[1px] h-4 bg-[#333]" />
           <MiniAudioDisplay masterAnalyser={audio.masterAnalyser} isPlaying={audio.transportState === 'started'} />
-          <div className="w-[1px] h-3.5 bg-[#333]" />
+          <div className="w-[1px] h-4 bg-[#333]" />
           <SystemPerformanceDisplay tracksCount={audio.tracks.length} isPlaying={audio.transportState === 'started'} />
+          <div className="w-[1px] h-4 bg-[#333]" />
+          <MetronomeBpmControl
+            bpm={audio.bpm}
+            onBpmChange={audio.setBpm}
+            metronomeEnabled={audio.metronomeEnabled}
+            onToggleMetronome={audio.toggleMetronome}
+            currentBeat={audio.currentBeat}
+            isPlaying={audio.transportState === 'started'}
+            embedded
+          />
         </div>
 
         <div className="flex-1 flex items-center justify-center px-8">
@@ -283,6 +308,11 @@ export default function App() {
           >
             {/* Track Headers — sticky left */}
             <div className="w-[220px] shrink-0 flex flex-col bg-[#151515] sticky left-0 z-40 border-r border-[#333]">
+              {/* Header Box aligned with Timeline Ruler */}
+              <div className="h-6 bg-[#18181c] border-b border-[#333] flex items-center justify-between px-3 text-[9px] font-mono font-bold text-[#888] select-none uppercase tracking-wider shrink-0">
+                <span>Tracks</span>
+              </div>
+
               {audio.tracks.map(track => (
                 <TrackHeader
                   key={track.id}
@@ -304,18 +334,28 @@ export default function App() {
             {/* Timeline column — flex-1 + align-stretch guarantees full height */}
             <div
               id="timeline-column"
-              className="relative flex-1 cursor-crosshair"
+              className="relative flex-1 cursor-crosshair flex flex-col"
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 audio.seek(x / zoom);
               }}
             >
-              {/* Vertical grid lines — absolute, fills full timeline */}
-              <div className="absolute inset-0 opacity-10 pointer-events-none z-0"
+              {/* Timeline Bar & Beat Ruler */}
+              <TimelineRuler
+                timelineDuration={timelineDuration}
+                zoom={zoom}
+                bpm={audio.bpm}
+                currentTime={audio.currentTime}
+                onSeek={audio.seek}
+              />
+
+              {/* Vertical Bar & Beat grid lines — absolute, fills full timeline */}
+              <div
+                className="absolute inset-0 pointer-events-none z-0"
                 style={{
-                  backgroundImage: 'linear-gradient(90deg, #333 1px, transparent 1px)',
-                  backgroundSize: `${zoom}px 100%`
+                  backgroundImage: `linear-gradient(90deg, rgba(255, 217, 0, 0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)`,
+                  backgroundSize: `${(240 / audio.bpm) * zoom}px 100%, ${(60 / audio.bpm) * zoom}px 100%`,
                 }}
               />
 
@@ -486,7 +526,7 @@ function TrackHeader({ track, isSelected, onSelect, updateParams, onUpload, onDe
             <span 
               onDoubleClick={() => setIsEditing(true)}
               className={cn(
-                "text-[11px] font-bold tracking-tight truncate max-w-[120px] cursor-text",
+                "text-[11px] font-bold tracking-tight truncate max-w-[120px] cursor-text kumbh-sans",
                 isSelected ? "text-[#ffd900]" : "text-[#e0e0e0]"
               )}
             >
@@ -888,11 +928,11 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
         </div>
         
         <div className="flex justify-between w-full px-1.5 mt-1">
-          <span className="text-[6px] text-[#444] font-bold">L</span>
-          <span className="text-[8px] font-mono font-bold text-[#ffd900]/80 leading-none">
+          <span className="text-[6px] text-[#444] font-bold major-mono-display-regular">L</span>
+          <span className="text-[8px] major-mono-display-regular font-bold text-[#ffd900]/80 leading-none">
             {track.pan === 0 ? 'C' : `${Math.abs(Math.round(track.pan * 100))}${track.pan < 0 ? 'L' : 'R'}`}
           </span>
-          <span className="text-[6px] text-[#444] font-bold">R</span>
+          <span className="text-[6px] text-[#444] font-bold major-mono-display-regular">R</span>
         </div>
       </div>
 
@@ -903,7 +943,7 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
           className="w-full bg-[#111] border border-[#444] rounded-sm py-0.5 mb-3 flex items-center justify-center shadow-inner cursor-pointer"
           onDoubleClick={() => updateParams(track.id, { volume: 0 })}
         >
-          <span className="text-[10px] font-mono text-[#ffd900] font-bold leading-none">
+          <span className="text-[10px] major-mono-display-regular text-[#ffd900] font-bold leading-none">
             {track.volume <= -59.5 ? '-∞' : track.volume.toFixed(1)}
           </span>
         </div>
@@ -915,12 +955,12 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
               <div 
                 key={val} 
                 className={cn(
-                  "absolute right-0 h-0 flex items-center justify-end text-[6px] font-mono",
+                  "absolute right-0 h-0 flex items-center justify-end text-[6px] major-mono-display-regular",
                   val === 6 ? "text-[#ffd900]/60" : "text-[#444]"
                 )}
                 style={{ bottom: `${dbToLevel(val) * 100}%` }}
               >
-                <span className="pr-0.5">{val > 0 ? `+${val}` : val}</span>
+                <span className="pr-0.5 major-mono-display-regular">{val > 0 ? `+${val}` : val}</span>
                 <div className="w-0.5 h-[1px] bg-white/20" />
               </div>
             ))}
@@ -1009,7 +1049,7 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
           "h-6 w-full border border-black rounded-sm flex items-center justify-center",
           isMaster ? "bg-[#ffd900] text-black" : "bg-[#151515] text-[#e0e0e0]"
         )}>
-            <span className="text-[9px] font-bold truncate px-1 tracking-tighter">{track.name}</span>
+            <span className="text-[9px] font-bold truncate px-1 tracking-tighter kumbh-sans">{track.name}</span>
         </div>
       </div>
     </div>

@@ -517,6 +517,14 @@ export function useAudioEngine() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
 
+  // BPM & Metronome state
+  const [bpm, setBpmState] = useState<number>(120);
+  const [metronomeEnabled, setMetronomeEnabledState] = useState<boolean>(false);
+  const [currentBeat, setCurrentBeat] = useState<number>(0);
+
+  const metronomeEnabledRef = useRef<boolean>(false);
+  const bpmRef = useRef<number>(120);
+
   // Use refs for Tone objects to keep track of them without triggering re-renders
   const masterChannelRef = useRef<StereoChannel | null>(null);
   const channelsRef = useRef<Map<string, StereoChannel>>(new Map());
@@ -530,6 +538,28 @@ export function useAudioEngine() {
     effects: createDefaultEffects(),
   });
 
+  const setBpm = useCallback((newBpm: number) => {
+    const clampedBpm = Math.max(60, Math.min(300, Math.round(newBpm)));
+    setBpmState(clampedBpm);
+    bpmRef.current = clampedBpm;
+    if (typeof Tone !== 'undefined' && Tone.Transport) {
+      Tone.Transport.bpm.value = clampedBpm;
+    }
+  }, []);
+
+  const toggleMetronome = useCallback(() => {
+    setMetronomeEnabledState(prev => {
+      const next = !prev;
+      metronomeEnabledRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const setMetronomeEnabled = useCallback((enabled: boolean) => {
+    setMetronomeEnabledState(enabled);
+    metronomeEnabledRef.current = enabled;
+  }, []);
+
   const init = useCallback(async () => {
     if (isInitialized) return;
     try {
@@ -539,6 +569,49 @@ export function useAudioEngine() {
       if (Tone.context.state !== 'running') {
         await Tone.context.resume();
       }
+
+      // Sync initial BPM to Tone.Transport
+      Tone.Transport.bpm.value = bpmRef.current;
+
+      // Metronome Click repeat schedule
+      Tone.Transport.scheduleRepeat((time) => {
+        const ticks = Tone.Transport.ticks;
+        const ppq = Tone.Transport.PPQ || 192;
+        const beat = Math.floor(Math.round(ticks / ppq)) % 4;
+        setCurrentBeat(beat);
+
+        if (metronomeEnabledRef.current) {
+          const rawCtx = Tone.context.rawContext;
+          if (rawCtx) {
+            try {
+              const osc = rawCtx.createOscillator();
+              const gain = rawCtx.createGain();
+
+              const isFirstBeat = (beat === 0);
+              const freq = isFirstBeat ? 1600 : 900;
+              const vol = isFirstBeat ? 0.45 : 0.25;
+
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(freq, time);
+
+              gain.gain.setValueAtTime(vol, time);
+              gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
+
+              osc.connect(gain);
+              if (masterChannelRef.current) {
+                gain.connect(masterChannelRef.current.input);
+              } else {
+                gain.connect(rawCtx.destination);
+              }
+
+              osc.start(time);
+              osc.stop(time + 0.035);
+            } catch (err) {
+              console.warn('Metronome click play error:', err);
+            }
+          }
+        }
+      }, "4n");
 
       // Initialize Master Channel with True Stereo Panner
       const masterChannel = new StereoChannel(Tone.context.rawContext);
@@ -1001,6 +1074,12 @@ export function useAudioEngine() {
     },
     transportState,
     currentTime,
+    bpm,
+    setBpm,
+    metronomeEnabled,
+    toggleMetronome,
+    setMetronomeEnabled,
+    currentBeat,
     isInitialized,
     isRendering,
     renderAudio,
