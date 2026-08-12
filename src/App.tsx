@@ -334,7 +334,8 @@ export default function App() {
             {/* Timeline column — flex-1 + align-stretch guarantees full height */}
             <div
               id="timeline-column"
-              className="relative flex-1 cursor-crosshair flex flex-col"
+              className="relative flex-1 cursor-crosshair flex flex-col w-full min-w-full"
+              style={{ minWidth: `${timelineWidth}px` }}
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const x = e.clientX - rect.left;
@@ -405,8 +406,8 @@ export default function App() {
                  className="absolute top-0 bottom-0 w-px bg-[#ffd900] z-30 pointer-events-none shadow-[0_0_10px_rgba(255,217,0,0.8)]"
                  style={{ left: `${audio.currentTime * zoom}px` }}
               >
-                <div className="sticky top-0 py-1">
-                  <div className="w-1.5 h-1.5 bg-[#ffd900] rounded-full -ml-[2.5px] -mt-1 shadow-[0_0_8px_rgba(255,217,0,0.6)] z-30" />
+                <div className="sticky top-0">
+                  <div className="w-2.5 h-2.5 bg-[#ffd900] rounded-full -ml-[4.5px] -mt-[5px] shadow-[0_0_8px_rgba(255,217,0,0.8)] border border-black/50 z-30" />
                 </div>
               </div>
             </div>

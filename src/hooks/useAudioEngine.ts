@@ -588,14 +588,15 @@ export function useAudioEngine() {
               const gain = rawCtx.createGain();
 
               const isFirstBeat = (beat === 0);
-              const freq = isFirstBeat ? 1600 : 900;
-              const vol = isFirstBeat ? 0.45 : 0.25;
+              const freq = isFirstBeat ? 1760 : 980;
+              const vol = isFirstBeat ? 0.85 : 0.60;
 
-              osc.type = 'sine';
+              osc.type = 'triangle';
               osc.frequency.setValueAtTime(freq, time);
+              osc.frequency.exponentialRampToValueAtTime(freq * 0.5, time + 0.04);
 
               gain.gain.setValueAtTime(vol, time);
-              gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
+              gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
 
               osc.connect(gain);
               if (masterChannelRef.current) {
@@ -605,7 +606,7 @@ export function useAudioEngine() {
               }
 
               osc.start(time);
-              osc.stop(time + 0.035);
+              osc.stop(time + 0.05);
             } catch (err) {
               console.warn('Metronome click play error:', err);
             }

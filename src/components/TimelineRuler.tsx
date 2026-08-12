@@ -20,7 +20,10 @@ export function TimelineRuler({
   const barWidthPx = secondsPerBar * zoom;
   const beatWidthPx = secondsPerBeat * zoom;
 
-  const totalBars = Math.ceil(timelineDuration / secondsPerBar) + 2;
+  const totalBars = Math.max(
+    Math.ceil(timelineDuration / secondsPerBar) + 10,
+    Math.ceil(4000 / barWidthPx)
+  );
   const totalWidth = timelineDuration * zoom;
 
   // Adaptive label step: if bar width is small (< 30px), label every 2, 4, 8, or 16 bars
@@ -61,8 +64,6 @@ export function TimelineRuler({
     const barNum = b + 1;
     const barLeft = b * barWidthPx;
 
-    if (barLeft > totalWidth + 100) break;
-
     const showLabel = (b % labelStepBars) === 0;
 
     bars.push(
@@ -100,19 +101,11 @@ export function TimelineRuler({
   return (
     <div
       onMouseDown={handleMouseDown}
-      className="h-6 bg-[#18181c] border-b border-[#333] relative overflow-hidden cursor-pointer select-none group z-20"
-      style={{ width: `${totalWidth}px` }}
+      className="h-6 bg-[#18181c] border-b border-[#333] relative overflow-hidden cursor-pointer select-none group z-20 w-full min-w-full"
+      style={{ minWidth: `${totalWidth}px` }}
       title="Click or drag to position playhead"
     >
       {bars}
-
-      {/* Playhead Marker on Ruler */}
-      <div
-        className="absolute top-0 bottom-0 w-px bg-[#ffd900] z-30 pointer-events-none shadow-[0_0_8px_rgba(255,217,0,0.8)]"
-        style={{ left: `${currentTime * zoom}px` }}
-      >
-        <div className="w-2.5 h-2.5 bg-[#ffd900] rounded-xs -ml-[4.5px] top-0 shadow-[0_0_6px_rgba(255,217,0,0.8)] border border-black/50" />
-      </div>
     </div>
   );
 }
