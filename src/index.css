@@ -1,9 +1,47 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;0,900;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Kumbh+Sans:wght,YOPQ@100..900,300&family=Major+Mono+Display&family=Syncopate:wght@400;700&display=swap');
 @import "tailwindcss";
 
+@font-face {
+  font-family: "MajorMonoNumbers";
+  font-style: normal;
+  font-weight: 400;
+  src: url("https://fonts.gstatic.com/s/majormonodisplay/v18/RWmVoLyb5fEqtsfBX9PDZIGr2tFubRhLCg.ttf") format("truetype");
+  unicode-range: U+0030-0039, U+002E, U+002C, U+002B, U+002D, U+0025, U+003A, U+002F;
+}
+
+.major-mono-display-regular {
+  font-family: "Major Mono Display", monospace;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.syncopate-regular {
+  font-family: "MajorMonoNumbers", "Syncopate", sans-serif;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.syncopate-bold {
+  font-family: "MajorMonoNumbers", "Syncopate", sans-serif;
+  font-weight: 700;
+  font-style: normal;
+}
+
+.kumbh-sans {
+  font-family: "MajorMonoNumbers", "Kumbh Sans", sans-serif;
+  font-optical-sizing: auto;
+  font-style: normal;
+  font-variation-settings: "YOPQ" 300;
+}
+
+.font-number, .major-mono {
+  font-family: "Major Mono Display", monospace;
+}
+
 @theme {
-  --font-sans: "Roboto", sans-serif;
-  --font-mono: "Roboto", sans-serif;
+  --font-sans: "MajorMonoNumbers", "Kumbh Sans", sans-serif;
+  --font-mono: "MajorMonoNumbers", "Kumbh Sans", monospace;
+  --font-display: "MajorMonoNumbers", "Kumbh Sans", sans-serif;
   
   --color-bg-base: #121212;
   --color-bg-panel: #1e1e1e;
@@ -15,7 +53,8 @@
 @layer base {
   body {
     @apply bg-bg-base text-[#e0e0e0] overflow-hidden;
-    font-family: "Roboto", sans-serif;
+    font-family: "MajorMonoNumbers", "Kumbh Sans", sans-serif;
+    font-variation-settings: "YOPQ" 300;
     font-size: 11px;
     overscroll-behavior: none;
   }
@@ -23,7 +62,7 @@
 
 /* LCD Display Font */
 .font-lcd {
-  font-family: "Roboto", sans-serif;
+  font-family: "MajorMonoNumbers", "Kumbh Sans", sans-serif;
 }
 
 /* Custom Scrollbar */

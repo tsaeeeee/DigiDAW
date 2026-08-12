@@ -162,9 +162,9 @@ export function SystemPerformanceDisplay({ tracksCount, isPlaying }: SystemPerfo
       </div>
 
       {/* Numerical Metrics Display */}
-      <div className="flex items-center gap-1.5 font-mono leading-none text-[8px]">
+      <div className="flex items-center gap-1.5 major-mono-display-regular leading-none text-[8px]">
         {/* Labels Column */}
-        <div className="flex flex-col gap-[1px] text-[#666] font-bold w-[18px] shrink-0">
+        <div className="flex flex-col gap-[1px] text-[#666] font-bold w-[18px] shrink-0 major-mono-display-regular">
           <div>CPU</div>
           <div>RAM</div>
         </div>
@@ -173,7 +173,7 @@ export function SystemPerformanceDisplay({ tracksCount, isPlaying }: SystemPerfo
         <div className="w-[1px] h-3 bg-[#333] shrink-0" />
 
         {/* Values Column with Fixed Width to Avoid Shifting Left Components */}
-        <div className="flex flex-col gap-[1px] font-bold text-right w-[30px] shrink-0">
+        <div className="flex flex-col gap-[1px] font-bold text-right w-[30px] shrink-0 major-mono-display-regular">
           <div className={cpu > 85 ? "text-red-500" : cpu > 60 ? "text-yellow-400" : "text-[#00f0ff]"}>
             {cpu}%
           </div>
@@ -196,7 +196,7 @@ export function SystemPerformanceDisplay({ tracksCount, isPlaying }: SystemPerfo
             <div>
               <div className="flex justify-between text-[#aaa] mb-0.5">
                 <span className="font-medium text-[#e0e0e0]">CPU</span>
-                <span className="font-mono text-[#00f0ff] font-bold">{cpu}%</span>
+                <span className="major-mono-display-regular text-[#00f0ff] font-bold">{cpu}%</span>
               </div>
               <div className="w-full bg-[#111] h-1.5 rounded-full overflow-hidden border border-[#333]">
                 <div 
@@ -209,7 +209,7 @@ export function SystemPerformanceDisplay({ tracksCount, isPlaying }: SystemPerfo
             <div>
               <div className="flex justify-between text-[#aaa] mb-0.5">
                 <span className="font-medium text-[#e0e0e0]">RAM</span>
-                <span className="font-mono text-[#ffd900] font-bold">{ramMB} MB ({ramPercent}%)</span>
+                <span className="major-mono-display-regular text-[#ffd900] font-bold">{ramMB} MB ({ramPercent}%)</span>
               </div>
               <div className="w-full bg-[#111] h-1.5 rounded-full overflow-hidden border border-[#333]">
                 <div 

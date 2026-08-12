@@ -135,7 +135,7 @@ export default function App() {
             </svg>
           </div>
           <div>
-            <h1 className="text-4xl font-black tracking-tight text-white">DigiDAW</h1>
+            <h1 className="text-3xl syncopate-regular font-normal tracking-tight text-white">DigiDAW</h1>
             <p className="text-[#8e9299] text-sm mt-2 font-medium">Professional Linear Audio Workstation for Mixing &amp; Mastering</p>
           </div>
           <button 
@@ -164,7 +164,7 @@ export default function App() {
                 <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
               </svg>
             </div>
-            <span className="text-[#ffd900] font-display font-black text-sm tracking-tight">DigiDAW</span>
+            <span className="text-[#ffd900] syncopate-regular font-normal text-sm tracking-tight">DigiDAW</span>
           </div>
           
           <div className="flex items-center gap-1.5">
@@ -476,7 +476,7 @@ function TrackHeader({ track, isSelected, onSelect, updateParams, onUpload, onDe
           {isEditing ? (
             <input 
               autoFocus
-              className="bg-black text-[11px] font-bold uppercase tracking-tight text-white px-1 rounded border border-[#3b82f6] outline-none w-full"
+              className="bg-black text-[11px] font-bold tracking-tight text-white px-1 rounded border border-[#3b82f6] outline-none w-full"
               value={tempName}
               onChange={(e) => setTempName(e.target.value)}
               onBlur={() => { setIsEditing(false); onRename(tempName); }}
@@ -486,7 +486,7 @@ function TrackHeader({ track, isSelected, onSelect, updateParams, onUpload, onDe
             <span 
               onDoubleClick={() => setIsEditing(true)}
               className={cn(
-                "text-[11px] font-bold uppercase tracking-tight truncate max-w-[120px] cursor-text",
+                "text-[11px] font-bold tracking-tight truncate max-w-[120px] cursor-text",
                 isSelected ? "text-[#ffd900]" : "text-[#e0e0e0]"
               )}
             >
@@ -1009,7 +1009,7 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
           "h-6 w-full border border-black rounded-sm flex items-center justify-center",
           isMaster ? "bg-[#ffd900] text-black" : "bg-[#151515] text-[#e0e0e0]"
         )}>
-            <span className="text-[9px] font-bold truncate px-1 uppercase tracking-tighter">{track.name}</span>
+            <span className="text-[9px] font-bold truncate px-1 tracking-tighter">{track.name}</span>
         </div>
       </div>
     </div>
