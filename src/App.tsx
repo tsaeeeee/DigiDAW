@@ -167,7 +167,7 @@ export default function App() {
   return (
     <div className="h-screen w-screen bg-[#121212] text-[#e0e0e0] flex flex-col overflow-hidden font-sans select-none text-[11px]">
       {/* 1. Header / Transport */}
-      <header className="h-[48px] border-b border-[#333] bg-[#2a2a2a] flex items-center px-4 gap-6 z-50">
+      <header className="h-[48px] border-b border-[#2a2a2a] bg-[#1a1a1a] flex items-center px-4 gap-6 z-50">
         <div className="flex items-center gap-2 mr-2 group">
           {/* Replace this SVG block with your brand icon SVG */}
           <div className="w-5 h-5 text-[#ffd900]">
@@ -246,8 +246,7 @@ export default function App() {
         </div>
 
         <div className="flex-1 flex items-center justify-center px-8">
-          <div className="flex items-center gap-3 w-full max-w-[200px] group">
-            <Clock className="w-3 h-3 text-[#666] group-hover:text-[#ffd900] transition-colors" />
+          <div className="flex items-center gap-3 w-full max-w-[200px]">
             <input 
               type="range"
               min={MIN_ZOOM}
@@ -338,7 +337,10 @@ export default function App() {
             {/* Track Headers — sticky left */}
             <div className="w-[220px] shrink-0 flex flex-col bg-[#151515] sticky left-0 z-40 border-r border-[#333]">
               {/* Header Box aligned with Timeline Ruler */}
-              <div className="h-6 bg-[#18181c] border-b border-[#333] flex items-center justify-between px-3 text-[9px] font-mono font-bold text-[#888] select-none uppercase tracking-wider shrink-0">
+              <div 
+                className="h-6 bg-[#1a1a1a] flex items-center justify-between px-3 text-[9px] font-mono font-bold text-[#888] select-none uppercase tracking-wider shrink-0"
+                style={{ borderBottom: '0.7px solid #333' }}
+              >
                 <span>Tracks</span>
               </div>
 
@@ -384,7 +386,7 @@ export default function App() {
               <div
                 className="absolute inset-0 pointer-events-none z-0"
                 style={{
-                  backgroundImage: `linear-gradient(90deg, rgba(255, 217, 0, 0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)`,
+                  backgroundImage: `linear-gradient(90deg, rgba(255, 217, 0, 0.15) 0.7px, transparent 0.7px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0.4px, transparent 0.4px)`,
                   backgroundSize: `${(240 / audio.bpm) * zoom}px 100%, ${(60 / audio.bpm) * zoom}px 100%`,
                 }}
               />
@@ -398,9 +400,12 @@ export default function App() {
                     setSelectedClipId(null);
                   }}
                   className={cn(
-                    "h-[80px] border-b relative group z-10 transition-colors",
-                    selectedTrackId === track.id ? "border-[#ffd900]/30 bg-white/[0.02]" : "border-[#333]"
+                    "h-[80px] relative group z-10 transition-colors",
+                    selectedTrackId === track.id ? "bg-white/[0.02]" : ""
                   )}
+                  style={{
+                    borderBottom: selectedTrackId === track.id ? '0.7px solid rgba(255, 217, 0, 0.3)' : '0.7px solid #333'
+                  }}
                 >
                   {track.clips.map(clip => (
                     <AudioClipItem
@@ -425,18 +430,18 @@ export default function App() {
             {/* Snap indicator — only visible during drag */}
             {snapIndicator !== null && (
               <div
-                className="absolute top-0 bottom-0 w-px bg-cyan-400/80 z-30 pointer-events-none shadow-[0_0_8px_rgba(34,211,238,0.6)]"
-                style={{ left: `${snapIndicator.time * zoom}px` }}
+                className="absolute top-0 bottom-0 bg-cyan-400/80 z-30 pointer-events-none shadow-[0_0_8px_rgba(34,211,238,0.6)]"
+                style={{ left: `${snapIndicator.time * zoom}px`, width: '0.7px' }}
               />
             )}
 
               {/* Playhead — absolute, spans full timeline height */}
               <div
-                 className="absolute top-0 bottom-0 w-px bg-[#ffd900] z-30 pointer-events-none shadow-[0_0_10px_rgba(255,217,0,0.8)]"
-                 style={{ left: `${audio.currentTime * zoom}px` }}
+                 className="absolute top-0 bottom-0 bg-[#ffd900] z-30 pointer-events-none shadow-[0_0_10px_rgba(255,217,0,0.8)]"
+                 style={{ left: `${audio.currentTime * zoom}px`, width: '0.7px' }}
               >
                 <div className="sticky top-0">
-                  <div className="w-2.5 h-2.5 bg-[#ffd900] rounded-full -ml-[4.5px] -mt-[5px] shadow-[0_0_8px_rgba(255,217,0,0.8)] border border-black/50 z-30" />
+                  <div className="w-2.5 h-2.5 bg-[#ffd900] rounded-full -ml-[4.65px] -mt-[5px] shadow-[0_0_8px_rgba(255,217,0,0.8)] border border-black/50 z-30" />
                 </div>
               </div>
             </div>
@@ -532,9 +537,12 @@ function TrackHeader({ track, isSelected, onSelect, updateParams, onUpload, onDe
     <div 
       onClick={onSelect}
       className={cn(
-        "h-[80px] border-b flex group transition-all relative shrink-0 cursor-pointer",
-        isSelected ? "bg-[#2d2a1d] border-[#ffd900]/80 shadow-[inset_0_0_10px_rgba(255,217,0,0.15)]" : "bg-[#252525] border-[#333] hover:bg-[#2a2a2a]"
+        "h-[80px] flex group transition-all relative shrink-0 cursor-pointer",
+        isSelected ? "bg-[#2d2a1d] shadow-[inset_0_0_10px_rgba(255,217,0,0.15)]" : "bg-[#252525] hover:bg-[#2a2a2a]"
       )}
+      style={{
+        borderBottom: isSelected ? '0.7px solid rgba(255, 217, 0, 0.8)' : '0.7px solid #333'
+      }}
     >
       {/* Fixed color indicator on the far left */}
       <div className="w-1.5 shrink-0 h-full relative" style={{ backgroundColor: track.color }}>

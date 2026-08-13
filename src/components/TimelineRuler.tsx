@@ -69,8 +69,8 @@ export function TimelineRuler({
     bars.push(
       <div
         key={`bar-${b}`}
-        className="absolute top-0 bottom-0 flex flex-col justify-between border-l border-[#555] pointer-events-none select-none"
-        style={{ left: `${barLeft}px` }}
+        className="absolute top-0 bottom-0 flex flex-col justify-between pointer-events-none select-none"
+        style={{ left: `${barLeft}px`, borderLeft: '0.4px solid #555' }}
       >
         {/* Bar Label */}
         {showLabel && (
@@ -87,8 +87,8 @@ export function TimelineRuler({
               return (
                 <div
                   key={`beat-${b}-${beatIdx}`}
-                  className="absolute bottom-0 h-2 border-l border-[#3a3a3a]"
-                  style={{ left: `${beatLeft}px` }}
+                  className="absolute bottom-0 h-2"
+                  style={{ left: `${beatLeft}px`, borderLeft: '0.4px solid #3a3a3a' }}
                 />
               );
             })}
@@ -101,8 +101,8 @@ export function TimelineRuler({
   return (
     <div
       onMouseDown={handleMouseDown}
-      className="h-6 bg-[#18181c] border-b border-[#333] relative overflow-hidden cursor-pointer select-none group z-20 w-full min-w-full"
-      style={{ minWidth: `${totalWidth}px` }}
+      className="h-6 bg-[#1a1a1a] relative overflow-hidden cursor-pointer select-none group z-20 w-full min-w-full"
+      style={{ minWidth: `${totalWidth}px`, borderBottom: '0.7px solid #333' }}
       title="Click or drag to position playhead"
     >
       {bars}
