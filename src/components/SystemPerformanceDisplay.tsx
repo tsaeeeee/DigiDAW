@@ -169,9 +169,6 @@ export function SystemPerformanceDisplay({ tracksCount, isPlaying }: SystemPerfo
           <div>RAM</div>
         </div>
 
-        {/* Small Separator Div */}
-        <div className="w-[1px] h-3 bg-[#333] shrink-0" />
-
         {/* Values Column with Fixed Width to Avoid Shifting Left Components */}
         <div className="flex flex-col gap-[1px] font-bold text-right w-[30px] shrink-0 kumbh-sans">
           <div className={cpu > 85 ? "text-red-500" : cpu > 60 ? "text-yellow-400" : "text-[#00f0ff]"}>

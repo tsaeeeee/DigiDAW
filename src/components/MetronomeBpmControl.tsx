@@ -10,6 +10,7 @@ interface MetronomeBpmControlProps {
   currentBeat: number;
   isPlaying: boolean;
   embedded?: boolean;
+  hideToggle?: boolean;
 }
 
 export function MetronomeBpmControl({
@@ -20,6 +21,7 @@ export function MetronomeBpmControl({
   currentBeat,
   isPlaying,
   embedded = false,
+  hideToggle = false,
 }: MetronomeBpmControlProps) {
   const [isEditingBpm, setIsEditingBpm] = useState(false);
   const [tempBpmStr, setTempBpmStr] = useState(bpm.toString());
@@ -61,26 +63,30 @@ export function MetronomeBpmControl({
       !embedded && "bg-black border border-[#444] rounded-sm px-2.5 py-1 shadow-inner"
     )}>
       {/* Metronome Toggle Button */}
-      <button
-        type="button"
-        onClick={onToggleMetronome}
-        title={metronomeEnabled ? "Turn Metronome Off" : "Turn Metronome On"}
-        className={cn(
-          "flex items-center justify-center p-1 rounded transition-all cursor-pointer border",
-          metronomeEnabled
-            ? "bg-[#ffd900] text-black border-[#ffd900] shadow-[0_0_8px_rgba(255,217,0,0.6)]"
-            : "bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50"
-        )}
-      >
-        {/* Metronome Icon SVG */}
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 shrink-0">
-          <path d="M12 2L4 22h16L12 2z" />
-          <path d="M12 18l5-10" />
-          <circle cx="17" cy="8" r="1.5" fill="currentColor" />
-        </svg>
-      </button>
+      {!hideToggle && (
+        <>
+          <button
+            type="button"
+            onClick={onToggleMetronome}
+            title={metronomeEnabled ? "Turn Metronome Off" : "Turn Metronome On"}
+            className={cn(
+              "flex items-center justify-center p-1 rounded transition-all cursor-pointer border",
+              metronomeEnabled
+                ? "bg-[#ffd900] text-black border-[#ffd900] shadow-[0_0_8px_rgba(255,217,0,0.6)]"
+                : "bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50"
+            )}
+          >
+            {/* Metronome Icon SVG */}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 shrink-0">
+              <path d="M12 2L4 22h16L12 2z" />
+              <path d="M12 18l5-10" />
+              <circle cx="17" cy="8" r="1.5" fill="currentColor" />
+            </svg>
+          </button>
 
-      <div className="w-[1px] h-4 bg-[#333]" />
+          <div className="w-[1px] h-4 bg-[#333]" />
+        </>
+      )}
 
       {/* BPM Adjustment Group */}
       <div className="flex items-center gap-1">
@@ -89,9 +95,9 @@ export function MetronomeBpmControl({
           onClick={() => onBpmChange(bpm - 1)}
           disabled={bpm <= 60}
           title="Decrease BPM (Min 60)"
-          className="w-4 h-4 rounded-xs bg-[#222] hover:bg-[#ffd900] hover:text-black border border-[#444] disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors text-[10px]"
+          className="flex items-center justify-center p-1 rounded transition-all cursor-pointer border bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          <Minus className="w-2.5 h-2.5" />
+          <Minus className="w-3.5 h-3.5 shrink-0" />
         </button>
 
         {/* BPM Value Display / Edit Input */}
@@ -126,9 +132,9 @@ export function MetronomeBpmControl({
           onClick={() => onBpmChange(bpm + 1)}
           disabled={bpm >= 300}
           title="Increase BPM (Max 300)"
-          className="w-4 h-4 rounded-xs bg-[#222] hover:bg-[#ffd900] hover:text-black border border-[#444] disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors text-[10px]"
+          className="flex items-center justify-center p-1 rounded transition-all cursor-pointer border bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          <Plus className="w-2.5 h-2.5" />
+          <Plus className="w-3.5 h-3.5 shrink-0" />
         </button>
       </div>
 

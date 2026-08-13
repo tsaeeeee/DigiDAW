@@ -168,43 +168,53 @@ export default function App() {
     <div className="h-screen w-screen bg-[#121212] text-[#e0e0e0] flex flex-col overflow-hidden font-sans select-none text-[11px]">
       {/* 1. Header / Transport */}
       <header className="h-[48px] border-b border-[#333] bg-[#2a2a2a] flex items-center px-4 gap-6 z-50">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 mr-2 group">
-            {/* Replace this SVG block with your brand icon SVG */}
-            <div className="w-5 h-5 text-[#ffd900]">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-full h-full">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-              </svg>
-            </div>
-            <span className="text-[#ffd900] syncopate-regular font-normal text-sm tracking-tight">DigiDAW</span>
+        <div className="flex items-center gap-2 mr-2 group">
+          {/* Replace this SVG block with your brand icon SVG */}
+          <div className="w-5 h-5 text-[#ffd900]">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-full h-full">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </svg>
           </div>
-          
-          <div className="flex items-center gap-1.5">
+          <span className="text-[#ffd900] syncopate-regular font-normal text-sm tracking-tight">DigiDAW</span>
+        </div>
+
+        <div className="flex items-center gap-3 bg-black rounded-sm px-3 py-1 text-[#ffd900] shadow-inner select-none">
+          {/* 1. Transport controls including metronome */}
+          <div className="flex items-center gap-1">
             <TransportButton 
               onClick={audio.stop} 
-              icon={<Square className="w-3 h-3 fill-current" />} 
+              icon={<Square className="w-3.5 h-3.5 fill-current shrink-0" />} 
               active={false}
-              label="Stop"
+              label="Stop (X)"
             />
             <TransportButton 
               onClick={audio.togglePlay} 
-              icon={audio.transportState === 'started' ? <Pause className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />} 
+              icon={audio.transportState === 'started' ? <Pause className="w-3.5 h-3.5 fill-current shrink-0" /> : <Play className="w-3.5 h-3.5 fill-current shrink-0" />} 
               active={audio.transportState === 'started'}
-              label={audio.transportState === 'started' ? "Pause" : "Play"}
+              label={audio.transportState === 'started' ? "Pause (Space)" : "Play (Space)"}
             />
+            <button
+              type="button"
+              onClick={audio.toggleMetronome}
+              title={audio.metronomeEnabled ? "Turn Metronome Off (M)" : "Turn Metronome On (M)"}
+              className={cn(
+                "flex items-center justify-center p-1 rounded transition-all cursor-pointer border",
+                audio.metronomeEnabled
+                  ? "bg-[#ffd900] text-black border-[#ffd900] shadow-[0_0_8px_rgba(255,217,0,0.6)]"
+                  : "bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50"
+              )}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 shrink-0">
+                <path d="M12 2L4 22h16L12 2z" />
+                <path d="M12 18l5-10" />
+                <circle cx="17" cy="8" r="1.5" fill="currentColor" />
+              </svg>
+            </button>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3 bg-black border border-[#444] rounded-sm px-3 py-1 text-[#ffd900] shadow-inner select-none">
-          <div className="flex flex-col items-center">
-            <span className="text-xs font-bold tracking-widest major-mono-display-regular leading-none">{formatTime(audio.currentTime)}</span>
-            <span className="text-[9px] tracking-wider text-[#aaa] major-mono-display-regular leading-none mt-0.5">{formatBarBeatTime(audio.currentTime, audio.bpm)}</span>
-          </div>
           <div className="w-[1px] h-4 bg-[#333]" />
-          <MiniAudioDisplay masterAnalyser={audio.masterAnalyser} isPlaying={audio.transportState === 'started'} />
-          <div className="w-[1px] h-4 bg-[#333]" />
-          <SystemPerformanceDisplay tracksCount={audio.tracks.length} isPlaying={audio.transportState === 'started'} />
-          <div className="w-[1px] h-4 bg-[#333]" />
+
+          {/* 2. BPM Control */}
           <MetronomeBpmControl
             bpm={audio.bpm}
             onBpmChange={audio.setBpm}
@@ -213,7 +223,26 @@ export default function App() {
             currentBeat={audio.currentBeat}
             isPlaying={audio.transportState === 'started'}
             embedded
+            hideToggle
           />
+
+          <div className="w-[1px] h-4 bg-[#333]" />
+
+          {/* 3. Timestamp */}
+          <div className="flex flex-col items-center">
+            <span className="text-xs font-bold tracking-widest major-mono-display-regular leading-none">{formatTime(audio.currentTime)}</span>
+            <span className="text-[9px] tracking-wider text-[#aaa] major-mono-display-regular leading-none mt-0.5">{formatBarBeatTime(audio.currentTime, audio.bpm)}</span>
+          </div>
+
+          <div className="w-[1px] h-4 bg-[#333]" />
+
+          {/* 4. Spectrum Audio Display */}
+          <MiniAudioDisplay masterAnalyser={audio.masterAnalyser} isPlaying={audio.transportState === 'started'} />
+
+          <div className="w-[1px] h-4 bg-[#333]" />
+
+          {/* 5. Performance Display */}
+          <SystemPerformanceDisplay tracksCount={audio.tracks.length} isPlaying={audio.transportState === 'started'} />
         </div>
 
         <div className="flex-1 flex items-center justify-center px-8">
@@ -468,13 +497,14 @@ export default function App() {
 function TransportButton({ icon, onClick, active, label }: { icon: React.ReactNode, onClick: () => void, active: boolean, label: string }) {
   return (
     <button 
+      type="button"
       onClick={onClick}
       title={label}
       className={cn(
-        "w-8 h-7 flex items-center justify-center rounded-sm transition-all border",
+        "flex items-center justify-center p-1 rounded transition-all cursor-pointer border",
         active 
-          ? "bg-[#ffd900]/75 text-black border-[#ffd900]" 
-          : "bg-[#3a3a3a] border-[#ffd900]/40 text-[#ffd900] hover:bg-[#ffd900]/75 hover:text-black hover:border-[#ffd900]"
+          ? "bg-[#ffd900] text-black border-[#ffd900] shadow-[0_0_8px_rgba(255,217,0,0.6)]" 
+          : "bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50"
       )}
     >
       {icon}
@@ -898,7 +928,7 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
       />
 
       {/* Immersive Panning Slider */}
-      <div className="w-full h-8 flex flex-col items-center justify-center relative mb-4 px-1">
+      <div className="w-full h-8 flex flex-col items-center justify-center relative mb-1 px-1">
         <div className="w-full h-4 bg-[#111] rounded-full border border-black/50 relative overflow-hidden flex items-center shadow-inner">
           <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-[#ffd900] -translate-x-1/2 z-0" />
           
@@ -924,8 +954,6 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
               boxShadow: track.pan !== 0 ? '0 0 10px rgba(255, 217, 0, 0.2)' : 'none'
             }}
           />
-          
-
         </div>
         
         <div className="flex justify-between w-full px-1.5 mt-1">
@@ -938,10 +966,10 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
       </div>
 
       {/* Main Control Section: Logic Style Fader & Meter */}
-      <div className="flex-1 flex flex-col w-full py-2 px-1">
+      <div className="flex-1 flex flex-col w-full pt-0 pb-1 px-1">
         {/* Numeric Volume Readout */}
         <div 
-          className="w-full bg-[#111] border border-[#444] rounded-sm py-0.5 mb-3 flex items-center justify-center shadow-inner cursor-pointer"
+          className="w-full bg-[#111] border border-[#444] rounded-sm py-0.5 mb-2 flex items-center justify-center shadow-inner cursor-pointer"
           onDoubleClick={() => updateParams(track.id, { volume: 0 })}
         >
           <span className="text-[10px] major-mono-display-regular text-[#ffd900] font-bold leading-none">
@@ -1222,14 +1250,16 @@ function MiniAudioDisplay({ masterAnalyser, isPlaying }: MiniAudioDisplayProps) 
 
   return (
     <div className="flex items-center gap-1.5 select-none">
-      <canvas 
-        ref={canvasRef} 
-        width={56} 
-        height={18} 
-        onClick={() => setMode(m => m === 'spectrum' ? 'peak' : 'spectrum')}
-        className="rounded-[2px] bg-black/80 border border-[#333] hover:border-[#ffd900]/60 transition-colors cursor-pointer"
-        title={`Master ${mode === 'spectrum' ? 'Real-Time Spectrum (RTA)' : 'Peak Meter (VU)'} - Click canvas to toggle mode`}
-      />
+      <div className="relative flex items-center bg-black/90 border border-[#333] hover:border-[#ffd900]/60 transition-colors rounded-[2px] p-[2px] cursor-pointer">
+        <canvas 
+          ref={canvasRef} 
+          width={58} 
+          height={18} 
+          onClick={() => setMode(m => m === 'spectrum' ? 'peak' : 'spectrum')}
+          className="rounded-[1px] block"
+          title={`Master ${mode === 'spectrum' ? 'Real-Time Spectrum (RTA)' : 'Peak Meter (VU)'} - Click canvas to toggle mode`}
+        />
+      </div>
       <div className="flex flex-col gap-[1px] justify-center">
         <button
           type="button"
