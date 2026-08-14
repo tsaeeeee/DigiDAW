@@ -46,6 +46,22 @@
     font-size: 11px;
     overscroll-behavior: none;
   }
+
+  button,
+  button:focus,
+  button:focus-visible,
+  button:focus-within,
+  button:active,
+  [role="button"],
+  [role="button"]:focus,
+  [role="button"]:focus-visible {
+    outline: none !important;
+    outline-style: none !important;
+    outline-width: 0 !important;
+    outline-color: transparent !important;
+    border: none;
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
 /* LCD Display Font */

@@ -70,10 +70,10 @@ export function MetronomeBpmControl({
             onClick={onToggleMetronome}
             title={metronomeEnabled ? "Turn Metronome Off" : "Turn Metronome On"}
             className={cn(
-              "flex items-center justify-center p-1 rounded transition-all cursor-pointer border",
+              "flex items-center justify-center p-1 rounded transition-all cursor-pointer",
               metronomeEnabled
-                ? "bg-[#ffd900] text-black border-[#ffd900] shadow-[0_0_8px_rgba(255,217,0,0.6)]"
-                : "bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50"
+                ? "bg-[#ffd900] text-black shadow-[0_0_8px_rgba(255,217,0,0.6)]"
+                : "bg-[#1f1f1f] text-[#888] hover:text-[#ffd900] hover:bg-[#2a2a2a]"
             )}
           >
             {/* Metronome Icon SVG */}
@@ -95,7 +95,7 @@ export function MetronomeBpmControl({
           onClick={() => onBpmChange(bpm - 1)}
           disabled={bpm <= 60}
           title="Decrease BPM (Min 60)"
-          className="flex items-center justify-center p-1 rounded transition-all cursor-pointer border bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex items-center justify-center p-1 rounded transition-all cursor-pointer bg-[#1f1f1f] text-[#888] hover:text-[#ffd900] hover:bg-[#2a2a2a] disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <Minus className="w-3.5 h-3.5 shrink-0" />
         </button>
@@ -132,7 +132,7 @@ export function MetronomeBpmControl({
           onClick={() => onBpmChange(bpm + 1)}
           disabled={bpm >= 300}
           title="Increase BPM (Max 300)"
-          className="flex items-center justify-center p-1 rounded transition-all cursor-pointer border bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex items-center justify-center p-1 rounded transition-all cursor-pointer bg-[#1f1f1f] text-[#888] hover:text-[#ffd900] hover:bg-[#2a2a2a] disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <Plus className="w-3.5 h-3.5 shrink-0" />
         </button>

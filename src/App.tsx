@@ -198,10 +198,10 @@ export default function App() {
               onClick={audio.toggleMetronome}
               title={audio.metronomeEnabled ? "Turn Metronome Off (M)" : "Turn Metronome On (M)"}
               className={cn(
-                "flex items-center justify-center p-1 rounded transition-all cursor-pointer border",
+                "flex items-center justify-center p-1 rounded transition-all cursor-pointer",
                 audio.metronomeEnabled
-                  ? "bg-[#ffd900] text-black border-[#ffd900] shadow-[0_0_8px_rgba(255,217,0,0.6)]"
-                  : "bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50"
+                  ? "bg-[#ffd900] text-black shadow-[0_0_8px_rgba(255,217,0,0.6)]"
+                  : "bg-[#1f1f1f] text-[#888] hover:text-[#ffd900] hover:bg-[#2a2a2a]"
               )}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 shrink-0">
@@ -263,7 +263,7 @@ export default function App() {
           <button 
             onClick={handleNormalizeGain}
             title="Normalize Gain to -1dB (Cmd+G / Ctrl+G)"
-            className="flex items-center justify-center w-8 h-7 rounded-sm transition-all border bg-[#3a3a3a] border-[#ffd900]/40 text-[#ffd900] hover:bg-[#ffd900] hover:text-black hover:border-[#ffd900]"
+            className="flex items-center justify-center w-8 h-7 rounded-sm transition-all bg-[#3a3a3a] text-[#ffd900] hover:bg-[#ffd900] hover:text-black cursor-pointer"
           >
             <Volume2 className="w-3.5 h-3.5" />
           </button>
@@ -272,10 +272,10 @@ export default function App() {
             onClick={() => setShowMixer(!showMixer)}
             title="Toggle Mixer"
             className={cn(
-              "flex items-center justify-center w-8 h-7 rounded-sm transition-all border",
+              "flex items-center justify-center w-8 h-7 rounded-sm transition-all cursor-pointer",
               showMixer 
-                ? "bg-[#ffd900]/75 text-black border-[#ffd900]" 
-                : "bg-[#3a3a3a] border-[#ffd900]/40 text-[#ffd900] hover:bg-[#ffd900]/75 hover:text-black hover:border-[#ffd900]"
+                ? "bg-[#ffd900] text-black font-bold" 
+                : "bg-[#3a3a3a] text-[#ffd900] hover:bg-[#ffd900]/75 hover:text-black"
             )}
           >
             <Sliders className="w-3.5 h-3.5" />
@@ -286,10 +286,10 @@ export default function App() {
             disabled={!canAddTrack}
             title={canAddTrack ? "Add Track" : "Track limit reached (25)"}
             className={cn(
-              "flex items-center justify-center w-8 h-7 transition-all border rounded-sm",
+              "flex items-center justify-center w-8 h-7 transition-all rounded-sm",
               canAddTrack 
-                ? "bg-[#3a3a3a] text-[#ffd900] border-[#ffd900]/40 hover:bg-[#ffd900]/75 hover:text-black hover:border-[#ffd900]" 
-                : "bg-[#252525] text-[#555] border-[#333] cursor-not-allowed opacity-50"
+                ? "bg-[#3a3a3a] text-[#ffd900] hover:bg-[#ffd900] hover:text-black cursor-pointer" 
+                : "bg-[#252525] text-[#555] cursor-not-allowed opacity-50"
             )}
           >
             <Plus className="w-3.5 h-3.5" />
@@ -300,8 +300,8 @@ export default function App() {
             disabled={audio.isRendering}
             title={audio.isRendering ? "Rendering..." : "Render Audio"}
             className={cn(
-              "flex items-center justify-center w-8 h-7 bg-[#3a3a3a] hover:bg-[#ffd900]/75 text-[#ffd900] hover:text-black rounded-sm transition-all border border-[#ffd900]/40 hover:border-[#ffd900] disabled:opacity-50 disabled:cursor-wait",
-              audio.isRendering && "animate-pulse border-[#ffd900]"
+              "flex items-center justify-center w-8 h-7 bg-[#3a3a3a] hover:bg-[#ffd900] text-[#ffd900] hover:text-black rounded-sm transition-all cursor-pointer disabled:opacity-50 disabled:cursor-wait",
+              audio.isRendering && "animate-pulse"
             )}
           >
             <Download className={cn("w-3.5 h-3.5", audio.isRendering && "animate-bounce")} />
@@ -441,7 +441,7 @@ export default function App() {
                  style={{ left: `${audio.currentTime * zoom}px`, width: '0.7px' }}
               >
                 <div className="sticky top-0">
-                  <div className="w-2.5 h-2.5 bg-[#ffd900] rounded-full -ml-[4.65px] -mt-[5px] shadow-[0_0_8px_rgba(255,217,0,0.8)] border border-black/50 z-30" />
+                  <div className="w-2.5 h-2.5 bg-[#ffd900] rounded-full -ml-[4.65px] -mt-[5px] shadow-[0_0_8px_rgba(255,217,0,0.8)] z-30" />
                 </div>
               </div>
             </div>
@@ -506,10 +506,10 @@ function TransportButton({ icon, onClick, active, label }: { icon: React.ReactNo
       onClick={onClick}
       title={label}
       className={cn(
-        "flex items-center justify-center p-1 rounded transition-all cursor-pointer border",
+        "flex items-center justify-center p-1 rounded transition-all cursor-pointer",
         active 
-          ? "bg-[#ffd900] text-black border-[#ffd900] shadow-[0_0_8px_rgba(255,217,0,0.6)]" 
-          : "bg-[#1f1f1f] text-[#888] border-[#333] hover:text-[#ffd900] hover:border-[#ffd900]/50"
+          ? "bg-[#ffd900] text-black shadow-[0_0_8px_rgba(255,217,0,0.6)]" 
+          : "bg-[#1f1f1f] text-[#888] hover:text-[#ffd900] hover:bg-[#2a2a2a]"
       )}
     >
       {icon}
@@ -606,8 +606,8 @@ function TrackHeader({ track, isSelected, onSelect, updateParams, onUpload, onDe
             <button 
               onClick={(e) => { e.stopPropagation(); updateParams(track.id, { muted: !track.muted }); }}
               className={cn(
-                "w-[22px] h-[22px] rounded-sm text-[9px] font-bold transition-all flex items-center justify-center border",
-                track.muted ? "bg-[#facc15] text-black border-[#ca8a04]" : "bg-[#1a1a1a] text-[#8e9299] border-[#333]"
+                "w-[22px] h-[22px] rounded-sm text-[9px] font-bold transition-all flex items-center justify-center cursor-pointer",
+                track.muted ? "bg-[#facc15] text-black" : "bg-[#1a1a1a] text-[#8e9299] hover:bg-[#333] hover:text-white"
               )}
             >
               M
@@ -615,8 +615,8 @@ function TrackHeader({ track, isSelected, onSelect, updateParams, onUpload, onDe
             <button 
               onClick={(e) => { e.stopPropagation(); updateParams(track.id, { soloed: !track.soloed }); }}
               className={cn(
-                "w-[22px] h-[22px] rounded-sm text-[9px] font-bold transition-all flex items-center justify-center border",
-                track.soloed ? "bg-[#fb923c] text-black border-[#ea580c]" : "bg-[#1a1a1a] text-[#8e9299] border-[#333]"
+                "w-[22px] h-[22px] rounded-sm text-[9px] font-bold transition-all flex items-center justify-center cursor-pointer",
+                track.soloed ? "bg-[#fb923c] text-black" : "bg-[#1a1a1a] text-[#8e9299] hover:bg-[#333] hover:text-white"
               )}
             >
               S
@@ -1069,21 +1069,21 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
             <button 
               onClick={() => updateParams(track.id, { muted: !track.muted })}
                className={cn(
-                "flex-1 h-6 rounded-sm text-[9px] font-bold transition-all border shadow-sm",
-                track.muted ? "bg-[#facc15] text-black border-[#ca8a04]" : "bg-[#333] text-[#999] border-[#444]"
+                "flex-1 h-6 rounded-sm text-[9px] font-bold transition-all shadow-sm cursor-pointer",
+                track.muted ? "bg-[#facc15] text-black" : "bg-[#333] text-[#999] hover:bg-[#444] hover:text-white"
               )}
             >M</button>
             <button 
               onClick={() => updateParams(track.id, { soloed: !track.soloed })}
               className={cn(
-                "flex-1 h-6 rounded-sm text-[9px] font-bold transition-all border shadow-sm",
-                track.soloed ? "bg-[#fb923c] text-black border-[#ea580c]" : "bg-[#333] text-[#999] border-[#444]"
+                "flex-1 h-6 rounded-sm text-[9px] font-bold transition-all shadow-sm cursor-pointer",
+                track.soloed ? "bg-[#fb923c] text-black" : "bg-[#333] text-[#999] hover:bg-[#444] hover:text-white"
               )}
             >S</button>
           </div>
         )}
         <div className={cn(
-          "h-6 w-full border border-black rounded-sm flex items-center justify-center",
+          "h-6 w-full rounded-sm flex items-center justify-center",
           isMaster ? "bg-[#ffd900] text-black" : "bg-[#151515] text-[#e0e0e0]"
         )}>
             <span className="text-[9px] font-bold truncate px-1 tracking-tighter kumbh-sans">{track.name}</span>
@@ -1273,10 +1273,10 @@ function MiniAudioDisplay({ masterAnalyser, isPlaying }: MiniAudioDisplayProps) 
           type="button"
           onClick={() => setMode('spectrum')}
           className={cn(
-            "px-1 py-[1px] text-[7px] font-mono font-bold leading-none rounded-[1px] transition-all cursor-pointer border",
+            "px-1 py-[1px] text-[7px] font-mono font-bold leading-none rounded-[1px] transition-all cursor-pointer",
             mode === 'spectrum'
-              ? "bg-[#ffd900] text-black border-[#ffd900]"
-              : "bg-[#1f1f1f] text-[#666] border-[#333] hover:text-[#aaa] hover:bg-[#2a2a2a]"
+              ? "bg-[#ffd900] text-black"
+              : "bg-[#1f1f1f] text-[#666] hover:text-[#aaa] hover:bg-[#2a2a2a]"
           )}
           title="Switch to Real-Time Spectrum (RTA)"
         >
@@ -1286,10 +1286,10 @@ function MiniAudioDisplay({ masterAnalyser, isPlaying }: MiniAudioDisplayProps) 
           type="button"
           onClick={() => setMode('peak')}
           className={cn(
-            "px-1 py-[1px] text-[7px] font-mono font-bold leading-none rounded-[1px] transition-all cursor-pointer border",
+            "px-1 py-[1px] text-[7px] font-mono font-bold leading-none rounded-[1px] transition-all cursor-pointer",
             mode === 'peak'
-              ? "bg-[#ffd900] text-black border-[#ffd900]"
-              : "bg-[#1f1f1f] text-[#666] border-[#333] hover:text-[#aaa] hover:bg-[#2a2a2a]"
+              ? "bg-[#ffd900] text-black"
+              : "bg-[#1f1f1f] text-[#666] hover:text-[#aaa] hover:bg-[#2a2a2a]"
           )}
           title="Switch to Peak Meter (VU)"
         >
