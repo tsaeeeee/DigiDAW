@@ -8,6 +8,7 @@ import { BrickwallLimiterModal } from './BrickwallLimiterModal';
 import { ReverbModal } from './ReverbModal';
 import { DelayModal } from './DelayModal';
 import { SaturatorModal } from './SaturatorModal';
+import { PitchyModal } from './PitchyModal';
 
 const MIN_SLOTS = 4;
 const MAX_SLOTS = 7;
@@ -15,6 +16,7 @@ const MAX_SLOTS = 7;
 export const DEDICATED_EFFECTS: { type: EffectType; name: string; shortCode: string; color: string; desc: string; icon: string }[] = [
   { type: 'Compressor', name: 'Compressor', shortCode: 'COMP', color: '#f59e0b', desc: 'Dynamic range & punch control', icon: '🎛️' },
   { type: 'EQ', name: '5-Band EQ', shortCode: 'EQ', color: '#06b6d4', desc: '5-Band parametric frequency shaping', icon: '🎚️' },
+  { type: 'Pitchy', name: 'Pitchy Auto-Tune', shortCode: 'PITCH', color: '#f472b6', desc: 'Real-time pitch correction & vocal tuning', icon: '🎤' },
   { type: 'Reverb', name: 'Reverb', shortCode: 'REV', color: '#a855f7', desc: 'Spatial hall & acoustic decay', icon: '🌊' },
   { type: 'Delay', name: 'Stereo Delay', shortCode: 'DLY', color: '#10b981', desc: 'Stereo feedback echo & tempo sync', icon: '⏱️' },
   { type: 'Limiter', name: 'Limiter', shortCode: 'LIM', color: '#eab308', desc: 'Peak ceiling protection', icon: '🛡️' },
@@ -37,10 +39,12 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
   const [activeReverbSlotIndex, setActiveReverbSlotIndex] = useState<number | null>(null);
   const [activeDelaySlotIndex, setActiveDelaySlotIndex] = useState<number | null>(null);
   const [activeSaturatorSlotIndex, setActiveSaturatorSlotIndex] = useState<number | null>(null);
+  const [activePitchySlotIndex, setActivePitchySlotIndex] = useState<number | null>(null);
 
   const [modalZIndices, setModalZIndices] = useState<Record<string, number>>({
     Compressor: 310,
     EQ: 310,
+    Pitchy: 310,
     Limiter: 310,
     Reverb: 310,
     Delay: 310,
@@ -80,6 +84,9 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
     } else if (slot.type === 'EQ') {
       setActiveEQSlotIndex(slotIndex);
       bringToFront('EQ');
+    } else if (slot.type === 'Pitchy') {
+      setActivePitchySlotIndex(slotIndex);
+      bringToFront('Pitchy');
     } else if (slot.type === 'Limiter') {
       setActiveLimiterSlotIndex(slotIndex);
       bringToFront('Limiter');
@@ -192,6 +199,8 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
               setActiveCompressorSlotIndex(activeSlotPicker.slotIndex);
             } else if (type === 'EQ') {
               setActiveEQSlotIndex(activeSlotPicker.slotIndex);
+            } else if (type === 'Pitchy') {
+              setActivePitchySlotIndex(activeSlotPicker.slotIndex);
             } else if (type === 'Limiter') {
               setActiveLimiterSlotIndex(activeSlotPicker.slotIndex);
             } else if (type === 'Reverb') {
@@ -299,6 +308,22 @@ export function EffectRack({ effects = [], onUpdateEffect, isMaster, analyser, i
           onClose={() => setActiveSaturatorSlotIndex(null)}
           zIndex={modalZIndices.Saturator}
           onFocus={() => bringToFront('Saturator')}
+        />
+      )}
+
+      {/* Pitchy Auto-Tune Modal Popup Window */}
+      {activePitchySlotIndex !== null && slotsToRender[activePitchySlotIndex]?.type === 'Pitchy' && (
+        <PitchyModal
+          slot={slotsToRender[activePitchySlotIndex]}
+          slotIndex={activePitchySlotIndex}
+          analyser={analyser}
+          isPlaying={isPlaying}
+          onUpdateParams={(slotIdx, bypassed, params) => {
+            onUpdateEffect(slotIdx, 'Pitchy', bypassed, params);
+          }}
+          onClose={() => setActivePitchySlotIndex(null)}
+          zIndex={modalZIndices.Pitchy}
+          onFocus={() => bringToFront('Pitchy')}
         />
       )}
     </div>

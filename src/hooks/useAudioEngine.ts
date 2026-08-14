@@ -4,6 +4,7 @@ import { Track, TransportState, AudioClip, EffectSlot, EffectType } from '../typ
 import { audioBufferToWav } from '../lib/wavEncoder';
 import { ProReverbNode } from '../dsp/reverb/ProReverbNode';
 import { SaturationNode, SaturationMode } from '../dsp/saturator/SaturationNode';
+import { PitchyNode } from '../dsp/pitchy/PitchyNode';
 
 function createLimiterCurve(limitLinear: number, enabled: number, length = 1024): Float32Array {
   const curve = new Float32Array(length);
@@ -242,6 +243,19 @@ export class StereoChannel {
               outputGain: p.outputGain ?? 0,
             });
           }
+        } else if (slot.type === 'Pitchy' && instance.nodes.length >= 1) {
+          const pitchNode = instance.nodes[0] as PitchyNode;
+          if (pitchNode && typeof pitchNode.update === 'function') {
+            const p = slot.params || {};
+            pitchNode.update({
+              referenceHz: p.referenceHz ?? 440.0,
+              speed: p.speed ?? 75,
+              humanize: p.humanize ?? 20,
+              transition: p.transition ?? 30,
+              color: p.color ?? 50,
+              mode: p.modeHQ === 1 ? 'hq' : 'realtime',
+            });
+          }
         }
       });
       return;
@@ -424,6 +438,19 @@ export class StereoChannel {
               outputGain: p.outputGain ?? 0,
             });
             createdNodes = [satNode];
+            break;
+          }
+          case 'Pitchy': {
+            const p = slot.params || {};
+            const pitchNode = new PitchyNode({
+              referenceHz: p.referenceHz ?? 440.0,
+              speed: p.speed ?? 75,
+              humanize: p.humanize ?? 20,
+              transition: p.transition ?? 30,
+              color: p.color ?? 50,
+              mode: p.modeHQ === 1 ? 'hq' : 'realtime',
+            });
+            createdNodes = [pitchNode];
             break;
           }
         }

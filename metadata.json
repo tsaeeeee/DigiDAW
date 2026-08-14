@@ -2,5 +2,5 @@
   "name": "DigiDAW",
   "description": "Professional Linear Audio Workstation for Mixing & Mastering powered by Crescentials Record.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

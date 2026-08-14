@@ -95,14 +95,16 @@ export function calculateSaturationParameters(
  * Standalone Saturation Node wrapper for Tone.js audio graph.
  * Fully integrates Tone.Gain -> Tone.WaveShaper -> Tone.Gain for complete compatibility.
  */
-export class SaturationNode {
+export class SaturationNode extends Tone.ToneAudioNode<any> {
+  readonly name: string = 'SaturationNode';
   public waveshaper: Tone.WaveShaper;
-  public inputNode: Tone.Gain;
-  public outputNode: Tone.Gain;
-  public input: Tone.Gain;  // Tone.js chaining compatibility
-  public output: Tone.Gain; // Tone.js chaining compatibility
+  public readonly inputNode: Tone.Gain;
+  public readonly outputNode: Tone.Gain;
+  public readonly input: Tone.Gain;
+  public readonly output: Tone.Gain;
 
   constructor(ctxOrOptions?: any, options?: SaturationOptions) {
+    super();
     let opts: SaturationOptions = {};
     if (ctxOrOptions && typeof ctxOrOptions === 'object') {
       if ('inputGain' in ctxOrOptions || 'saturationDrive' in ctxOrOptions || 'saturationMode' in ctxOrOptions || 'outputGain' in ctxOrOptions) {
@@ -112,8 +114,8 @@ export class SaturationNode {
       }
     }
 
-    this.inputNode = new Tone.Gain(1);
-    this.outputNode = new Tone.Gain(1);
+    this.inputNode = new Tone.Gain({ context: this.context });
+    this.outputNode = new Tone.Gain({ context: this.context });
     this.input = this.inputNode;
     this.output = this.outputNode;
 
@@ -125,6 +127,7 @@ export class SaturationNode {
 
     const initialCurve = createSaturationCurve(driveAmt, asymmetry);
     this.waveshaper = new Tone.WaveShaper({
+      context: this.context,
       curve: initialCurve,
     });
     if (opts.oversample) {
@@ -159,29 +162,14 @@ export class SaturationNode {
     this.waveshaper.curve = createSaturationCurve(driveAmt, asymmetry);
   }
 
-  public connect(destination: any): any {
-    return Tone.connect(this.outputNode, destination);
-  }
-
-  public disconnect(): void {
+  public dispose(): this {
     try {
       this.inputNode.disconnect();
-    } catch {
-      // ignore
-    }
-    try {
       this.waveshaper.disconnect();
-    } catch {
-      // ignore
-    }
-    try {
       this.outputNode.disconnect();
     } catch {
       // ignore
     }
-  }
-
-  public dispose(): void {
     try {
       this.inputNode.dispose();
       this.waveshaper.dispose();
@@ -189,5 +177,7 @@ export class SaturationNode {
     } catch {
       // ignore
     }
+    super.dispose();
+    return this;
   }
 }

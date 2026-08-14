@@ -4,7 +4,8 @@ export type EffectType =
   | 'Reverb'
   | 'Delay'
   | 'Limiter'
-  | 'Saturator';
+  | 'Saturator'
+  | 'Pitchy';
 
 export interface EffectSlot {
   id: string;
