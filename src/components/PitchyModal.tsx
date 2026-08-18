@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Power, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Save, Activity } from 'lucide-react';
+import { Power, X, ChevronLeft, ChevronRight, ChevronDown, Save } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { EffectSlot } from '../types/daw';
 import { NOTE_NAMES, PitchyNode } from '../dsp/pitchy/PitchyNode';
@@ -249,14 +249,8 @@ export function PitchyModal({
 
   // Live pitch detection monitoring from active DSP node
   const [liveDetectedNote, setLiveDetectedNote] = useState<string>('C');
-  const [liveDetectedHz, setLiveDetectedHz] = useState<number>(0);
-  const [liveTargetHz, setLiveTargetHz] = useState<number>(0);
   const [liveCentsDeviation, setLiveCentsDeviation] = useState<number>(0);
   const [isActivelyTracking, setIsActivelyTracking] = useState<boolean>(false);
-
-  // Moving Pitch Spectrum Canvas Ref
-  const spectrumCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const pitchHistoryRef = useRef<{ cents: number; tracking: boolean; note: string }[]>([]);
 
   // Modal Dragging State
   const modalRef = useRef<HTMLDivElement>(null);
@@ -362,146 +356,21 @@ export function PitchyModal({
     setActiveAB(slotChoice);
   };
 
-  // Real-time Visual Meter and Moving Tune Spectrum Canvas
+  // Real-time Visual Note & Deviation Telemetry Loop
   useEffect(() => {
     let animId: number;
 
     const render = () => {
       const activeNode = PitchyNode.lastActiveInstance;
-      let currentNote = 'C';
-      let currentCents = 0;
-      let isTrack = false;
-      let curHz = 0;
-      let tgtHz = 0;
 
       if (activeNode && activeNode.isTracking) {
         const telemetry = activeNode.getTelemetry();
-        currentNote = telemetry.closestNoteName || 'C';
-        currentCents = telemetry.centsDeviation;
-        curHz = Math.round(telemetry.detectedHz);
-        tgtHz = Math.round(telemetry.targetHz);
-        isTrack = true;
-
-        setLiveDetectedNote(currentNote);
-        setLiveCentsDeviation(currentCents);
-        setLiveDetectedHz(curHz);
-        setLiveTargetHz(tgtHz);
+        setLiveDetectedNote(telemetry.closestNoteName || 'C');
+        setLiveCentsDeviation(telemetry.centsDeviation);
         setIsActivelyTracking(true);
       } else {
         setIsActivelyTracking(false);
         setLiveCentsDeviation(0);
-        setLiveDetectedHz(0);
-        setLiveTargetHz(0);
-      }
-
-      // Record to scrolling pitch history
-      const history = pitchHistoryRef.current;
-      history.push({
-        cents: currentCents,
-        tracking: isTrack,
-        note: currentNote,
-      });
-      if (history.length > 160) {
-        history.shift();
-      }
-
-      // Render Moving Spectrum & Pitch Trail Canvas
-      const canvas = spectrumCanvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const width = canvas.width;
-          const height = canvas.height;
-          const midY = height / 2;
-
-          ctx.clearRect(0, 0, width, height);
-
-          // Dark grid background
-          ctx.fillStyle = '#0f0f14';
-          ctx.fillRect(0, 0, width, height);
-
-          // Horizontal Guide Lines (-50, -25, 0 In-Tune, +25, +50 Cents)
-          ctx.strokeStyle = '#22222d';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-
-          // +25 cents line
-          const yPlus25 = midY - (25 / 50) * (midY - 8);
-          ctx.moveTo(0, yPlus25);
-          ctx.lineTo(width, yPlus25);
-
-          // -25 cents line
-          const yMinus25 = midY + (25 / 50) * (midY - 8);
-          ctx.moveTo(0, yMinus25);
-          ctx.lineTo(width, yMinus25);
-          ctx.stroke();
-
-          // Center Zero Line (Perfect In-Tune)
-          ctx.strokeStyle = 'rgba(244, 114, 182, 0.35)';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(0, midY);
-          ctx.lineTo(width, midY);
-          ctx.stroke();
-
-          // Grid Labels
-          ctx.fillStyle = '#6b7280';
-          ctx.font = '8px monospace';
-          ctx.fillText('+50c', 4, 10);
-          ctx.fillText(' 0c', 4, midY + 3);
-          ctx.fillText('-50c', 4, height - 3);
-
-          // Draw Moving Pitch Waveform & Tuning Trail
-          if (history.length > 1) {
-            const stepX = width / 160;
-
-            // Area Gradient Under Trail
-            const areaGrad = ctx.createLinearGradient(0, 0, 0, height);
-            areaGrad.addColorStop(0, 'rgba(244, 114, 182, 0.18)');
-            areaGrad.addColorStop(0.5, 'rgba(232, 121, 249, 0.05)');
-            areaGrad.addColorStop(1, 'rgba(192, 132, 252, 0.18)');
-
-            ctx.beginPath();
-            let hasStarted = false;
-
-            for (let i = 0; i < history.length; i++) {
-              const item = history[i];
-              const x = i * stepX;
-              const y = item.tracking
-                ? midY - (Math.max(-50, Math.min(50, item.cents)) / 50) * (midY - 8)
-                : midY;
-
-              if (!hasStarted) {
-                ctx.moveTo(x, y);
-                hasStarted = true;
-              } else {
-                ctx.lineTo(x, y);
-              }
-            }
-
-            ctx.strokeStyle = '#e879f9';
-            ctx.lineWidth = 2.5;
-            ctx.shadowColor = 'rgba(244, 114, 182, 0.8)';
-            ctx.shadowBlur = 8;
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-
-            // Draw Head Pulse Point
-            const lastItem = history[history.length - 1];
-            if (lastItem && lastItem.tracking) {
-              const headX = (history.length - 1) * stepX;
-              const headY = midY - (Math.max(-50, Math.min(50, lastItem.cents)) / 50) * (midY - 8);
-
-              ctx.beginPath();
-              ctx.arc(headX, headY, 4, 0, Math.PI * 2);
-              ctx.fillStyle = '#ffffff';
-              ctx.shadowColor = '#f472b6';
-              ctx.shadowBlur = 10;
-              ctx.fill();
-              ctx.shadowBlur = 0;
-            }
-          }
-        }
       }
 
       animId = requestAnimationFrame(render);
@@ -672,49 +541,10 @@ export function PitchyModal({
                 <div className="absolute -top-16 -left-16 w-36 h-36 bg-[#ec4899]/10 rounded-full blur-2xl pointer-events-none" />
                 <div className="absolute -bottom-16 -right-16 w-36 h-36 bg-[#c084fc]/10 rounded-full blur-2xl pointer-events-none" />
 
-                {/* Upper Area: Reference Hz (Left) & Note Pitch Arc Gauge (Right) */}
-                <div className="flex items-center justify-between relative z-10 px-1">
-                  {/* Left: 440.0 HZ Tuning Reference Control */}
-                  <div className="flex flex-col items-center bg-[#181822] border border-[#2e2d3e] rounded-xl px-3 py-2 shadow-inner">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const nextHz = Math.min(466.0, parseFloat((referenceHz + 0.5).toFixed(1)));
-                        setReferenceHz(nextHz);
-                        emitParams({ referenceHz: nextHz });
-                      }}
-                      className="p-0.5 text-[#888] hover:text-[#f472b6] transition-colors cursor-pointer"
-                      title="Increase Reference Hz"
-                    >
-                      <ChevronUp className="w-4 h-4" />
-                    </button>
-
-                    <div className="flex flex-col items-center my-0.5">
-                      <span className="text-[16px] font-black text-[#f3f4f6] tracking-wider font-mono">
-                        {referenceHz.toFixed(1)} HZ
-                      </span>
-                      <span className="text-[8px] text-[#f472b6] tracking-widest uppercase font-extrabold">
-                        REFERENCE
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const nextHz = Math.max(415.0, parseFloat((referenceHz - 0.5).toFixed(1)));
-                        setReferenceHz(nextHz);
-                        emitParams({ referenceHz: nextHz });
-                      }}
-                      className="p-0.5 text-[#888] hover:text-[#f472b6] transition-colors cursor-pointer"
-                      title="Decrease Reference Hz"
-                    >
-                      <ChevronDown className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {/* Right: Big Glowing Target Note with Arc Meter */}
-                  <div className="relative w-44 h-28 flex items-center justify-center">
-                    <svg className="w-44 h-28" viewBox="0 0 160 100">
+                {/* Center Glowing Target Note with Arc Meter */}
+                <div className="flex-1 flex flex-col items-center justify-center relative z-10 px-1 py-4">
+                  <div className="relative w-52 h-36 flex items-center justify-center">
+                    <svg className="w-52 h-36" viewBox="0 0 160 100">
                       <defs>
                         <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                           <stop offset="0%" stopColor="#f472b6" />
@@ -758,44 +588,15 @@ export function PitchyModal({
 
                     {/* Big Center Note Letter */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center pt-3 pointer-events-none">
-                      <span className="text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-[#ffffff] to-[#e9d5ff] drop-shadow-[0_0_12px_rgba(192,132,252,0.6)] kumbh-sans">
+                      <span className="text-5xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-[#ffffff] to-[#e9d5ff] drop-shadow-[0_0_14px_rgba(192,132,252,0.6)] kumbh-sans">
                         {liveDetectedNote}
                       </span>
-                      <span className="text-[9px] font-mono font-bold tracking-widest text-[#c084fc] mt-0.5">
+                      <span className="text-[10px] font-mono font-bold tracking-widest text-[#c084fc] mt-1">
                         {isActivelyTracking
                           ? (centsClamped >= 0 ? `+${centsClamped} CENTS` : `${centsClamped} CENTS`)
                           : 'IN TUNE'}
                       </span>
                     </div>
-                  </div>
-                </div>
-
-                {/* Moving Tune Spectrum & Real-Time Pitch Trail Display */}
-                <div className="relative z-10 flex flex-col gap-1 mt-1">
-                  <div className="flex items-center justify-between px-1 text-[9px] text-[#9ca3af] font-mono">
-                    <div className="flex items-center gap-1.5">
-                      <Activity className="w-3 h-3 text-[#f472b6] animate-pulse" />
-                      <span className="font-bold text-[#e5e7eb] tracking-wider uppercase">TUNE SPECTRUM</span>
-                    </div>
-                    <div className="flex items-center gap-2 font-bold">
-                      {isActivelyTracking && liveDetectedHz > 0 && (
-                        <span className="text-[#f472b6]">{liveDetectedHz} Hz → {liveTargetHz} Hz</span>
-                      )}
-                      <span className={cn(
-                        "w-2 h-2 rounded-full",
-                        isActivelyTracking ? "bg-[#22c55e] shadow-[0_0_6px_#22c55e]" : "bg-[#6b7280]"
-                      )} />
-                    </div>
-                  </div>
-
-                  {/* Canvas Waveform Display */}
-                  <div className="h-[105px] w-full rounded-lg border border-[#2d2c3d] overflow-hidden bg-[#0d0d12] shadow-inner">
-                    <canvas
-                      ref={spectrumCanvasRef}
-                      width={310}
-                      height={105}
-                      className="w-full h-full block"
-                    />
                   </div>
                 </div>
               </div>

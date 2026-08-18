@@ -1,6 +1,6 @@
 /**
- * AudioWorkletProcessor raw code string for Pro Reverb DSP
- * Runs sample-by-sample processing inside the Web Audio API AudioWorklet thread.
+ * AudioWorkletProcessor raw code string for Analog Circuit Reverb DSP
+ * Faithful circuit simulation of the NE5532 + PT2399 / Belton Brick Analog Reverb Circuit.
  */
 export const PRO_REVERB_WORKLET_CODE = `
 class DelayLine {
@@ -20,8 +20,8 @@ class DelayLine {
   }
 
   read(delaySamples) {
-    if (delaySamples < 0) delaySamples = 0;
-    const readPos = this.writePos - delaySamples;
+    const clamped = delaySamples < 0 ? 0 : delaySamples;
+    const readPos = this.writePos - clamped;
     const iReadPos = Math.floor(readPos);
     const frac = readPos - iReadPos;
 
@@ -30,12 +30,7 @@ class DelayLine {
 
     const s0 = this.buffer[idx0];
     const s1 = this.buffer[idx1];
-
     return s0 + frac * (s1 - s0);
-  }
-
-  readAt(index) {
-    return this.buffer[(this.writePos - 1 - index) & this.mask];
   }
 
   clear() {
@@ -44,7 +39,7 @@ class DelayLine {
   }
 }
 
-class OnePoleLP {
+class AnalogLowPass {
   constructor() {
     this.a0 = 1.0;
     this.b1 = 0.0;
@@ -53,7 +48,7 @@ class OnePoleLP {
 
   setCutoff(cutoffHz, sampleRate) {
     const fc = Math.min(0.49 * sampleRate, Math.max(10, cutoffHz));
-    const x = Math.exp(-2.0 * Math.PI * fc / sampleRate);
+    const x = Math.exp((-2.0 * Math.PI * fc) / sampleRate);
     this.a0 = 1.0 - x;
     this.b1 = x;
   }
@@ -68,28 +63,36 @@ class OnePoleLP {
   }
 }
 
-class CrossoverFilter {
+class AnalogHighPass {
   constructor() {
-    this.lp = new OnePoleLP();
+    this.a0 = 1.0;
+    this.b1 = 0.0;
+    this.x1 = 0.0;
+    this.y1 = 0.0;
   }
 
-  setCrossover(frequencyHz, sampleRate) {
-    this.lp.setCutoff(frequencyHz, sampleRate);
+  setCutoff(cutoffHz, sampleRate) {
+    const fc = Math.min(0.49 * sampleRate, Math.max(1, cutoffHz));
+    const w = 2.0 * Math.PI * fc / sampleRate;
+    const alpha = 1.0 / (1.0 + w);
+    this.a0 = alpha;
+    this.b1 = alpha;
   }
 
-  process(input, bassMultiplier) {
-    const low = this.lp.process(input);
-    const high = input - low;
-    const scaledLow = low * bassMultiplier;
-    return scaledLow + high;
+  process(input) {
+    const out = this.a0 * (input - this.x1) + this.b1 * this.y1;
+    this.x1 = input;
+    this.y1 = out;
+    return out;
   }
 
   clear() {
-    this.lp.clear();
+    this.x1 = 0;
+    this.y1 = 0;
   }
 }
 
-class BiquadFilter {
+class AnalogBiquad {
   constructor() {
     this.b0 = 1; this.b1 = 0; this.b2 = 0;
     this.a1 = 0; this.a2 = 0;
@@ -99,49 +102,39 @@ class BiquadFilter {
 
   setLowpass(cutoffHz, sampleRate, q = 0.707) {
     const fc = Math.min(0.49 * sampleRate, Math.max(20, cutoffHz));
-    const omega = 2 * Math.PI * fc / sampleRate;
-    const sin = Math.sin(omega);
-    const cos = Math.cos(omega);
-    const alpha = sin / (2 * q);
+    const w0 = (2.0 * Math.PI * fc) / sampleRate;
+    const alpha = Math.sin(w0) / (2.0 * q);
+    const cosw0 = Math.cos(w0);
 
-    const b0 = (1 - cos) / 2;
-    const b1 = 1 - cos;
-    const b2 = (1 - cos) / 2;
-    const a0 = 1 + alpha;
-
-    this.b0 = b0 / a0;
-    this.b1 = b1 / a0;
-    this.b2 = b2 / a0;
-    this.a1 = (-2 * cos) / a0;
-    this.a2 = (1 - alpha) / a0;
+    const a0 = 1.0 + alpha;
+    this.b0 = ((1.0 - cosw0) / 2.0) / a0;
+    this.b1 = (1.0 - cosw0) / a0;
+    this.b2 = ((1.0 - cosw0) / 2.0) / a0;
+    this.a1 = (-2.0 * cosw0) / a0;
+    this.a2 = (1.0 - alpha) / a0;
   }
 
   setHighpass(cutoffHz, sampleRate, q = 0.707) {
     const fc = Math.min(0.49 * sampleRate, Math.max(10, cutoffHz));
-    const omega = 2 * Math.PI * fc / sampleRate;
-    const sin = Math.sin(omega);
-    const cos = Math.cos(omega);
-    const alpha = sin / (2 * q);
+    const w0 = (2.0 * Math.PI * fc) / sampleRate;
+    const alpha = Math.sin(w0) / (2.0 * q);
+    const cosw0 = Math.cos(w0);
 
-    const b0 = (1 + cos) / 2;
-    const b1 = -(1 + cos);
-    const b2 = (1 + cos) / 2;
-    const a0 = 1 + alpha;
-
-    this.b0 = b0 / a0;
-    this.b1 = b1 / a0;
-    this.b2 = b2 / a0;
-    this.a1 = (-2 * cos) / a0;
-    this.a2 = (1 - alpha) / a0;
+    const a0 = 1.0 + alpha;
+    this.b0 = ((1.0 + cosw0) / 2.0) / a0;
+    this.b1 = (-(1.0 + cosw0)) / a0;
+    this.b2 = ((1.0 + cosw0) / 2.0) / a0;
+    this.a1 = (-2.0 * cosw0) / a0;
+    this.a2 = (1.0 - alpha) / a0;
   }
 
   process(input) {
-    const output = this.b0 * input + this.b1 * this.x1 + this.b2 * this.x2 - this.a1 * this.y1 - this.a2 * this.y2;
+    const out = this.b0 * input + this.b1 * this.x1 + this.b2 * this.x2 - this.a1 * this.y1 - this.a2 * this.y2;
     this.x2 = this.x1;
     this.x1 = input;
     this.y2 = this.y1;
-    this.y1 = output;
-    return output;
+    this.y1 = out;
+    return out;
   }
 
   clear() {
@@ -149,25 +142,28 @@ class BiquadFilter {
   }
 }
 
-class ModulatedAllpassFilter {
-  constructor(maxDelaySamples, baseDelaySamples, coefficient) {
-    this.delayLine = new DelayLine(maxDelaySamples);
-    this.baseDelaySamples = baseDelaySamples;
+class AnalogAllpass {
+  constructor(maxDelay, delaySamples, coefficient = 0.6) {
+    this.delayLine = new DelayLine(maxDelay);
+    this.delaySamples = delaySamples;
     this.coefficient = coefficient;
   }
 
-  setCoefficient(g) {
-    this.coefficient = g;
+  setDelay(delay) {
+    this.delaySamples = delay;
   }
 
-  process(input, modOffsetSamples = 0) {
-    const currentDelay = Math.max(1, this.baseDelaySamples + modOffsetSamples);
-    const delayed = this.delayLine.read(currentDelay);
-    const feedForward = -this.coefficient * input;
-    const output = feedForward + delayed;
-    const feedBack = input + output * this.coefficient;
-    this.delayLine.write(feedBack);
-    return output;
+  setCoefficient(c) {
+    this.coefficient = c;
+  }
+
+  process(input, modOffset = 0) {
+    const d = this.delaySamples + modOffset;
+    const delayed = this.delayLine.read(d);
+    const v = input - this.coefficient * delayed;
+    const out = delayed + this.coefficient * v;
+    this.delayLine.write(v);
+    return out;
   }
 
   clear() {
@@ -175,182 +171,120 @@ class ModulatedAllpassFilter {
   }
 }
 
-class LFO {
-  constructor(initialPhase = 0) {
-    this.phase = initialPhase;
-  }
-
-  process(rateHz, sampleRate) {
-    const phaseInc = (2.0 * Math.PI * rateHz) / sampleRate;
-    this.phase += phaseInc;
-    if (this.phase >= 2.0 * Math.PI) {
-      this.phase -= 2.0 * Math.PI;
-    }
-    return {
-      sine: Math.sin(this.phase),
-      cos: Math.cos(this.phase),
-    };
-  }
+function opAmpSaturate(x, gain = 1.0) {
+  const scaled = x * gain;
+  if (scaled > 2.5) return 1.0;
+  if (scaled < -2.5) return -1.0;
+  return Math.tanh(scaled);
 }
 
-const EARLY_TAPS = [
-  { delayMs: 4.3,  gainL: 0.84, gainR: 0.22 },
-  { delayMs: 7.1,  gainL: 0.31, gainR: 0.78 },
-  { delayMs: 11.8, gainL: 0.65, gainR: 0.35 },
-  { delayMs: 15.4, gainL: 0.25, gainR: 0.62 },
-  { delayMs: 21.2, gainL: 0.54, gainR: 0.48 },
-  { delayMs: 27.6, gainL: 0.42, gainR: 0.51 },
-  { delayMs: 34.1, gainL: 0.33, gainR: 0.29 },
-  { delayMs: 42.8, gainL: 0.28, gainR: 0.36 },
-  { delayMs: 51.5, gainL: 0.21, gainR: 0.24 },
-  { delayMs: 63.0, gainL: 0.15, gainR: 0.18 },
-];
-
-class EarlyReflectionEngine {
-  constructor() {
-    this.delayL = new DelayLine(9600);
-    this.delayR = new DelayLine(9600);
-  }
-
-  process(inputL, inputR, roomSizeScale, erLevel, sampleRate) {
-    this.delayL.write(inputL);
-    this.delayR.write(inputR);
-
-    let outL = 0;
-    let outR = 0;
-    const scale = Math.max(0.2, roomSizeScale);
-
-    for (let i = 0; i < EARLY_TAPS.length; i++) {
-      const tap = EARLY_TAPS[i];
-      const samples = Math.round((tap.delayMs * scale * sampleRate) / 1000);
-
-      const sL = this.delayL.read(samples);
-      const sR = this.delayR.read(samples);
-
-      outL += sL * tap.gainL + sR * (tap.gainR * 0.5);
-      outR += sR * tap.gainR + sL * (tap.gainL * 0.5);
-    }
-
-    const gain = erLevel * 0.35;
-    return {
-      erL: outL * gain,
-      erR: outR * gain,
-    };
-  }
-
-  clear() {
-    this.delayL.clear();
-    this.delayR.clear();
-  }
-}
-
-class StereoMatrix {
-  processInputMode(inL, inR, mode) {
-    if (mode === 1) {
-      const side = (inL - inR) * 0.7071;
-      return { l: side, r: -side };
-    }
-    return { l: inL, r: inR };
-  }
-
-  applyStereoSeparation(outL, outR, separationPct) {
-    const normSep = Math.max(-1, Math.min(1, separationPct / 100));
-    const mid = (outL + outR) * 0.5;
-    const side = (outL - outR) * 0.5;
-    const sideGain = Math.max(0, 1.0 + normSep);
-    const newSide = side * sideGain;
-    return {
-      l: mid + newSide,
-      r: mid - newSide,
-    };
-  }
-}
-
-class WorkletReverbEngine {
-  constructor(sampleRate) {
+class CircuitReverbDSP {
+  constructor(sampleRate, params) {
     this.sampleRate = sampleRate;
-    this.params = {
-      mode: 0, hcut: 12000, lcut: 120, predelay: 20, size: 65,
-      mod: 30, diff: 80, speed: 1.5, bass: 1.0, decay: 2.5,
-      cross: 500, damp: 5000, dry: 100, er: 40, wet: 50, sep: 0
-    };
+    this.params = params;
 
-    const maxPreDelaySamples = Math.ceil(0.200 * sampleRate);
-    this.preDelayL = new DelayLine(maxPreDelaySamples);
-    this.preDelayR = new DelayLine(maxPreDelaySamples);
+    const maxPreDelay = Math.ceil(0.25 * sampleRate);
+    this.preDelayL = new DelayLine(maxPreDelay);
+    this.preDelayR = new DelayLine(maxPreDelay);
 
-    this.lcutFilterL = new BiquadFilter();
-    this.lcutFilterR = new BiquadFilter();
-    this.hcutFilterL = new BiquadFilter();
-    this.hcutFilterR = new BiquadFilter();
+    this.inputHP_L = new AnalogHighPass();
+    this.inputHP_R = new AnalogHighPass();
+    this.inputLP_L = new AnalogLowPass();
+    this.inputLP_R = new AnalogLowPass();
 
-    this.earlyReflections = new EarlyReflectionEngine();
+    this.userLcutL = new AnalogBiquad();
+    this.userLcutR = new AnalogBiquad();
+    this.userHcutL = new AnalogBiquad();
+    this.userHcutR = new AnalogBiquad();
 
-    this.inputDiffusersL = [];
-    this.inputDiffusersR = [];
+    this.preEmphasisL = new AnalogBiquad();
+    this.preEmphasisR = new AnalogBiquad();
+    this.feedbackHP_L = new AnalogHighPass();
+    this.feedbackHP_R = new AnalogHighPass();
 
+    this.diffusersL = [];
+    this.diffusersR = [];
+    const scale = sampleRate / 44100;
     const apDelaysL = [142, 107, 379, 277];
     const apDelaysR = [151, 113, 389, 281];
     for (let i = 0; i < 4; i++) {
-      const baseL = Math.round((apDelaysL[i] * sampleRate) / 44100);
-      const baseR = Math.round((apDelaysR[i] * sampleRate) / 44100);
-      this.inputDiffusersL.push(new ModulatedAllpassFilter(baseL * 2, baseL, 0.65));
-      this.inputDiffusersR.push(new ModulatedAllpassFilter(baseR * 2, baseR, 0.65));
+      const dL = Math.round(apDelaysL[i] * scale);
+      const dR = Math.round(apDelaysR[i] * scale);
+      this.diffusersL.push(new AnalogAllpass(dL * 2, dL, 0.62));
+      this.diffusersR.push(new AnalogAllpass(dR * 2, dR, 0.62));
     }
 
-    const scale = sampleRate / 44100;
-
-    this.tankAllpass1L = new ModulatedAllpassFilter(Math.round(1500 * scale), Math.round(672 * scale), 0.7);
-    this.tankAllpass1R = new ModulatedAllpassFilter(Math.round(1500 * scale), Math.round(908 * scale), 0.7);
-
+    this.tankAllpass1L = new AnalogAllpass(Math.round(1600 * scale), Math.round(672 * scale), 0.7);
+    this.tankAllpass1R = new AnalogAllpass(Math.round(1600 * scale), Math.round(908 * scale), 0.7);
     this.tankDelay1L = new DelayLine(Math.round(9000 * scale));
     this.tankDelay1R = new DelayLine(Math.round(9000 * scale));
 
-    this.tankDampL = new OnePoleLP();
-    this.tankDampR = new OnePoleLP();
+    this.tankDampingL = new AnalogLowPass();
+    this.tankDampingR = new AnalogLowPass();
 
-    this.tankBassCrossL = new CrossoverFilter();
-    this.tankBassCrossR = new CrossoverFilter();
-
-    this.tankAllpass2L = new ModulatedAllpassFilter(Math.round(3000 * scale), Math.round(1800 * scale), 0.5);
-    this.tankAllpass2R = new ModulatedAllpassFilter(Math.round(3000 * scale), Math.round(2656 * scale), 0.5);
-
+    this.tankAllpass2L = new AnalogAllpass(Math.round(3200 * scale), Math.round(1800 * scale), 0.5);
+    this.tankAllpass2R = new AnalogAllpass(Math.round(3200 * scale), Math.round(2656 * scale), 0.5);
     this.tankDelay2L = new DelayLine(Math.round(9000 * scale));
     this.tankDelay2R = new DelayLine(Math.round(9000 * scale));
 
-    this.lfo1 = new LFO(0);
-    this.lfo2 = new LFO(Math.PI * 0.5);
+    this.deEmphasisL = new AnalogBiquad();
+    this.deEmphasisR = new AnalogBiquad();
+    this.postFilterLP_L = new AnalogLowPass();
+    this.postFilterLP_R = new AnalogLowPass();
 
-    this.stereoMatrix = new StereoMatrix();
+    this.sumFilterLP_L = new AnalogLowPass();
+    this.sumFilterLP_R = new AnalogLowPass();
+    this.outHP_L = new AnalogHighPass();
+    this.outHP_R = new AnalogHighPass();
+    this.outLP_L = new AnalogLowPass();
+    this.outLP_R = new AnalogLowPass();
 
-    this.tankFeedbackL = 0;
-    this.tankFeedbackR = 0;
+    this.lfoPhase1 = 0;
+    this.lfoPhase2 = Math.PI * 0.5;
 
-    this.updateFilters();
-  }
+    this.feedbackSampleL = 0;
+    this.feedbackSampleR = 0;
 
-  setParams(newParams) {
-    Object.assign(this.params, newParams);
     this.updateFilters();
   }
 
   updateFilters() {
     const sr = this.sampleRate;
-    this.lcutFilterL.setHighpass(this.params.lcut, sr);
-    this.lcutFilterR.setHighpass(this.params.lcut, sr);
-    this.hcutFilterL.setLowpass(this.params.hcut, sr);
-    this.hcutFilterR.setLowpass(this.params.hcut, sr);
+    this.inputHP_L.setCutoff(7.2, sr);
+    this.inputHP_R.setCutoff(7.2, sr);
+    this.inputLP_L.setCutoff(15915, sr);
+    this.inputLP_R.setCutoff(15915, sr);
 
-    this.tankDampL.setCutoff(this.params.damp, sr);
-    this.tankDampR.setCutoff(this.params.damp, sr);
+    this.userLcutL.setHighpass(this.params.lcut, sr);
+    this.userLcutR.setHighpass(this.params.lcut, sr);
+    this.userHcutL.setLowpass(this.params.hcut, sr);
+    this.userHcutR.setLowpass(this.params.hcut, sr);
 
-    this.tankBassCrossL.setCrossover(this.params.cross, sr);
-    this.tankBassCrossR.setCrossover(this.params.cross, sr);
+    this.preEmphasisL.setLowpass(3400, sr, 0.85);
+    this.preEmphasisR.setLowpass(3400, sr, 0.85);
+    this.feedbackHP_L.setCutoff(146, sr);
+    this.feedbackHP_R.setCutoff(146, sr);
+
+    const dampCutoff = Math.max(500, Math.min(16000, this.params.damp));
+    this.tankDampingL.setCutoff(dampCutoff, sr);
+    this.tankDampingR.setCutoff(dampCutoff, sr);
+
+    this.deEmphasisL.setLowpass(4200, sr, 0.707);
+    this.deEmphasisR.setLowpass(4200, sr, 0.707);
+    this.postFilterLP_L.setCutoff(8000, sr);
+    this.postFilterLP_R.setCutoff(8000, sr);
+
+    this.sumFilterLP_L.setCutoff(14500, sr);
+    this.sumFilterLP_R.setCutoff(14500, sr);
+    this.outHP_L.setCutoff(154, sr);
+    this.outHP_R.setCutoff(154, sr);
+    this.outLP_L.setCutoff(7200, sr);
+    this.outLP_R.setCutoff(7200, sr);
 
     const diffCoeff = 0.3 + 0.45 * (this.params.diff / 100);
     for (let i = 0; i < 4; i++) {
-      this.inputDiffusersL[i].setCoefficient(diffCoeff);
-      this.inputDiffusersR[i].setCoefficient(diffCoeff);
+      this.diffusersL[i].setCoefficient(diffCoeff);
+      this.diffusersR[i].setCoefficient(diffCoeff);
     }
   }
 
@@ -358,134 +292,161 @@ class WorkletReverbEngine {
     const sr = this.sampleRate;
     const scaleSR = sr / 44100;
 
-    const modeInput = this.stereoMatrix.processInputMode(inL, inR, this.params.mode);
-
-    let filteredL = this.hcutFilterL.process(this.lcutFilterL.process(modeInput.l));
-    let filteredR = this.hcutFilterR.process(this.lcutFilterR.process(modeInput.r));
-
-    const preDelaySamples = Math.max(0, Math.round((this.params.predelay * sr) / 1000));
-    this.preDelayL.write(filteredL);
-    this.preDelayR.write(filteredR);
-
-    const preDelayedL = this.preDelayL.read(preDelaySamples);
-    const preDelayedR = this.preDelayR.read(preDelaySamples);
-
-    const roomSizeNorm = this.params.size / 100;
-    const erGainNorm = this.params.er / 100;
-    const er = this.earlyReflections.process(preDelayedL, preDelayedR, roomSizeNorm, erGainNorm, sr);
-
-    let diffL = preDelayedL;
-    let diffR = preDelayedR;
-    for (let i = 0; i < 4; i++) {
-      diffL = this.inputDiffusersL[i].process(diffL);
-      diffR = this.inputDiffusersR[i].process(diffR);
+    let mid = (inL + inR) * 0.7071;
+    let side = (inL - inR) * 0.7071;
+    let procInL = inL;
+    let procInR = inR;
+    if (this.params.mode === 1) {
+      procInL = side;
+      procInR = side;
+    } else if (this.params.mode === 0) {
+      procInL = mid;
+      procInR = mid;
     }
 
-    const modDepthSamples = (this.params.mod / 100) * 8.0 * scaleSR;
-    const lfo1Val = this.lfo1.process(this.params.speed, sr);
-    const lfo2Val = this.lfo2.process(this.params.speed * 0.85, sr);
+    const bufInL = this.inputLP_L.process(this.inputHP_L.process(procInL));
+    const bufInR = this.inputLP_R.process(this.inputHP_R.process(procInR));
+    const x1OutL = -opAmpSaturate(bufInL, 1.0);
+    const x1OutR = -opAmpSaturate(bufInR, 1.0);
 
-    const modOffsetL1 = lfo1Val.sine * modDepthSamples;
-    const modOffsetR1 = lfo1Val.cos * modDepthSamples;
-    const modOffsetL2 = lfo2Val.sine * modDepthSamples;
-    const modOffsetR2 = lfo2Val.cos * modDepthSamples;
+    const dryGain = (this.params.dry / 100);
+    const directL = x1OutL * dryGain;
+    const directR = x1OutR * dryGain;
 
-    const t60 = Math.max(0.1, this.params.decay);
-    const baseLoopSamples = 4400 * scaleSR * Math.max(0.3, roomSizeNorm);
-    const rawFeedback = Math.pow(10, (-3 * (baseLoopSamples / sr)) / t60);
-    const feedbackCoeff = Math.min(0.985, Math.max(0.1, rawFeedback));
+    const attackGain = 0.5 + (this.params.er / 100) * 0.7;
+    let filteredInL = this.userHcutL.process(this.userLcutL.process(inL * attackGain));
+    let filteredInR = this.userHcutR.process(this.userLcutR.process(inR * attackGain));
 
-    const inputTankL = diffL + this.tankFeedbackR * feedbackCoeff;
-    const inputTankR = diffR + this.tankFeedbackL * feedbackCoeff;
+    const preDelaySamples = Math.round((this.params.predelay / 1000) * sr);
+    this.preDelayL.write(filteredInL);
+    this.preDelayR.write(filteredInR);
+    const delayedInL = this.preDelayL.read(preDelaySamples);
+    const delayedInR = this.preDelayR.read(preDelaySamples);
 
-    const ap1L = this.tankAllpass1L.process(inputTankL, modOffsetL1);
-    const baseDelay1L = Math.round(4453 * scaleSR * Math.max(0.2, roomSizeNorm));
-    this.tankDelay1L.write(ap1L);
-    const delayed1L = this.tankDelay1L.read(baseDelay1L + modOffsetL2);
+    const fbHP_L = this.feedbackHP_L.process(this.feedbackSampleL);
+    const fbHP_R = this.feedbackHP_R.process(this.feedbackSampleR);
+    const preInL = this.preEmphasisL.process(delayedInL + fbHP_L);
+    const preInR = this.preEmphasisR.process(delayedInR + fbHP_R);
 
-    const damped1L = this.tankDampL.process(delayed1L);
-    const bassProcessedL = this.tankBassCrossL.process(damped1L, this.params.bass);
-    const ap2L = this.tankAllpass2L.process(bassProcessedL, modOffsetR1);
+    let diffL = preInL;
+    let diffR = preInR;
+    for (let i = 0; i < 4; i++) {
+      diffL = this.diffusersL[i].process(diffL);
+      diffR = this.diffusersR[i].process(diffR);
+    }
 
-    const baseDelay2L = Math.round(3720 * scaleSR * Math.max(0.2, roomSizeNorm));
-    this.tankDelay2L.write(ap2L);
-    const delayed2L = this.tankDelay2L.read(baseDelay2L);
+    const sizeScale = 0.5 + (this.params.size / 100) * 0.9;
+    const decayTime = Math.max(0.2, this.params.decay);
+    const decayFactor = Math.pow(10, -3.0 / (decayTime * (44100 / (4200 * sizeScale))));
+    const baseFeedback = Math.min(0.96, Math.max(0.1, decayFactor));
 
-    this.tankFeedbackL = delayed2L;
+    const modDepth = (this.params.mod / 100) * 12.0 * scaleSR;
+    const lfoFreq = Math.max(0.1, this.params.speed);
+    this.lfoPhase1 += (2 * Math.PI * lfoFreq) / sr;
+    this.lfoPhase2 += (2 * Math.PI * (lfoFreq * 1.13)) / sr;
+    if (this.lfoPhase1 > 2 * Math.PI) this.lfoPhase1 -= 2 * Math.PI;
+    if (this.lfoPhase2 > 2 * Math.PI) this.lfoPhase2 -= 2 * Math.PI;
 
-    const ap1R = this.tankAllpass1R.process(inputTankR, modOffsetR1);
-    const baseDelay1R = Math.round(4211 * scaleSR * Math.max(0.2, roomSizeNorm));
-    this.tankDelay1R.write(ap1R);
-    const delayed1R = this.tankDelay1R.read(baseDelay1R + modOffsetR2);
+    const mod1 = Math.sin(this.lfoPhase1) * modDepth;
+    const mod2 = Math.cos(this.lfoPhase2) * modDepth;
 
-    const damped1R = this.tankDampR.process(delayed1R);
-    const bassProcessedR = this.tankBassCrossR.process(damped1R, this.params.bass);
-    const ap2R = this.tankAllpass2R.process(bassProcessedR, modOffsetL1);
+    const tankInL = diffL + this.feedbackSampleR * baseFeedback;
+    const tankInR = diffR + this.feedbackSampleL * baseFeedback;
 
-    const baseDelay2R = Math.round(3163 * scaleSR * Math.max(0.2, roomSizeNorm));
-    this.tankDelay2R.write(ap2R);
-    const delayed2R = this.tankDelay2R.read(baseDelay2R);
+    const ap1OutL = this.tankAllpass1L.process(tankInL, mod1);
+    const ap1OutR = this.tankAllpass1R.process(tankInR, mod2);
 
-    this.tankFeedbackR = delayed2R;
+    const d1LenL = Math.round(4453 * scaleSR * sizeScale);
+    const d1LenR = Math.round(3720 * scaleSR * sizeScale);
+    this.tankDelay1L.write(ap1OutL);
+    this.tankDelay1R.write(ap1OutR);
+    const d1OutL = this.tankDelay1L.read(d1LenL);
+    const d1OutR = this.tankDelay1R.read(d1LenR);
 
-    const tapL1 = this.tankDelay1L.readAt(Math.round(266 * scaleSR));
-    const tapL2 = this.tankDelay1L.readAt(Math.round(2974 * scaleSR));
-    const tapL3 = this.tankDelay2L.readAt(Math.round(1913 * scaleSR));
-    const tapL4 = this.tankDelay2R.readAt(Math.round(1996 * scaleSR));
+    const dampedL = this.tankDampingL.process(d1OutL) * this.params.bass;
+    const dampedR = this.tankDampingR.process(d1OutR) * this.params.bass;
 
-    const tapR1 = this.tankDelay1R.readAt(Math.round(353 * scaleSR));
-    const tapR2 = this.tankDelay1R.readAt(Math.round(2870 * scaleSR));
-    const tapR3 = this.tankDelay2R.readAt(Math.round(1720 * scaleSR));
-    const tapR4 = this.tankDelay2L.readAt(Math.round(1085 * scaleSR));
+    const ap2OutL = this.tankAllpass2L.process(dampedL, mod2);
+    const ap2OutR = this.tankAllpass2R.process(dampedR, mod1);
 
-    const lateL = (tapL1 + tapL2 - tapL3 + tapL4) * 0.35;
-    const lateR = (tapR1 + tapR2 - tapR3 + tapR4) * 0.35;
+    const d2LenL = Math.round(3163 * scaleSR * sizeScale);
+    const d2LenR = Math.round(2520 * scaleSR * sizeScale);
+    this.tankDelay2L.write(ap2OutL);
+    this.tankDelay2R.write(ap2OutR);
+    const d2OutL = this.tankDelay2L.read(d2LenL);
+    const d2OutR = this.tankDelay2R.read(d2LenR);
 
-    const stereoLate = this.stereoMatrix.applyStereoSeparation(lateL, lateR, this.params.sep);
+    const fbPotGain = 0.4 + (this.params.decay / 20.0) * 0.45;
+    this.feedbackSampleL = opAmpSaturate(d2OutL * fbPotGain, 0.9);
+    this.feedbackSampleR = opAmpSaturate(d2OutR * fbPotGain, 0.9);
 
-    const dryGain = this.params.dry / 100;
-    const wetGain = this.params.wet / 100;
+    const rawWetL = (this.tankDelay1L.read(Math.round(266 * scaleSR))
+      + this.tankDelay1L.read(Math.round(2974 * scaleSR))
+      - this.tankAllpass2L.process(this.tankDelay2L.read(Math.round(1913 * scaleSR)))
+      + this.tankDelay2L.read(Math.round(1996 * scaleSR))
+      - this.tankDelay1R.read(Math.round(1990 * scaleSR))) * 0.45;
 
-    const outL = inL * dryGain + er.erL + stereoLate.l * wetGain;
-    const outR = inR * dryGain + er.erR + stereoLate.r * wetGain;
+    const rawWetR = (this.tankDelay1R.read(Math.round(353 * scaleSR))
+      + this.tankDelay1R.read(Math.round(3627 * scaleSR))
+      - this.tankAllpass2R.process(this.tankDelay2R.read(Math.round(1228 * scaleSR)))
+      + this.tankDelay2R.read(Math.round(2673 * scaleSR))
+      - this.tankDelay1L.read(Math.round(1066 * scaleSR))) * 0.45;
 
-    return { outL, outR };
+    const deEmphL = this.postFilterLP_L.process(this.deEmphasisL.process(rawWetL));
+    const deEmphR = this.postFilterLP_R.process(this.deEmphasisR.process(rawWetR));
+
+    const wetGain = (this.params.wet / 100) * 1.1;
+    const effectL = deEmphL * wetGain;
+    const effectR = deEmphR * wetGain;
+
+    const sumL = this.sumFilterLP_L.process(-(directL + effectL));
+    const sumR = this.sumFilterLP_R.process(-(directR + effectR));
+
+    const satOutL = opAmpSaturate(sumL, 1.0);
+    const satOutR = opAmpSaturate(sumR, 1.0);
+
+    let finalOutL = this.outLP_L.process(this.outHP_L.process(satOutL));
+    let finalOutR = this.outLP_R.process(this.outHP_R.process(satOutR));
+
+    const sep = this.params.sep / 100;
+    const outMid = (finalOutL + finalOutR) * 0.5;
+    const outSide = (finalOutL - finalOutR) * 0.5;
+    finalOutL = outMid + outSide * (1.0 + sep);
+    finalOutR = outMid - outSide * (1.0 + sep);
+
+    return { outL: finalOutL, outR: finalOutR };
   }
 }
 
 class ProReverbProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
-    this.engine = new WorkletReverbEngine(sampleRate);
+    this.params = {};
+    this.dsp = new CircuitReverbDSP(sampleRate, this.params);
+
     this.port.onmessage = (event) => {
       if (event.data && event.data.type === 'UPDATE_PARAMS') {
-        this.engine.setParams(event.data.params);
+        this.params = { ...this.params, ...event.data.params };
+        this.dsp.params = this.params;
+        this.dsp.updateFilters();
       }
     };
   }
 
-  process(inputs, outputs) {
+  process(inputs, outputs, parameters) {
     const input = inputs[0];
     const output = outputs[0];
+    if (!output || output.length === 0) return true;
 
-    if (!input || input.length === 0 || !output || output.length === 0) {
-      return true;
-    }
+    const outL = output[0];
+    const outR = output[1] || output[0];
+    const inL = (input && input[0]) || new Float32Array(outL.length);
+    const inR = (input && input[1]) || inL;
 
-    const inputL = input[0] || new Float32Array(128);
-    const inputR = input[1] || inputL;
-
-    const outputL = output[0];
-    const outputR = output[1] || outputL;
-
-    const numSamples = inputL.length;
-
-    for (let i = 0; i < numSamples; i++) {
-      const res = this.engine.processSample(inputL[i], inputR[i]);
-      outputL[i] = res.outL;
-      if (outputR && outputR !== outputL) {
-        outputR[i] = res.outR;
-      }
+    for (let i = 0; i < outL.length; i++) {
+      const res = this.dsp.processSample(inL[i], inR[i]);
+      outL[i] = res.outL;
+      outR[i] = res.outR;
     }
 
     return true;

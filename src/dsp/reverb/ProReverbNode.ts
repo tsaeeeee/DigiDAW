@@ -1,193 +1,171 @@
 import * as Tone from 'tone';
 import { ReverbParams, DEFAULT_REVERB_PARAMS } from './ReverbParameters';
-import { PRO_REVERB_WORKLET_CODE } from './workletCode';
 import { ReverbEngine } from './ReverbEngine';
 
-const registeredContexts = new WeakSet<BaseAudioContext>();
-let registrationPromise: Promise<void> | null = null;
-
-export async function ensureReverbWorkletRegistered(context: BaseAudioContext): Promise<boolean> {
-  if (registeredContexts.has(context)) {
-    return true;
-  }
-
-  if (!context.audioWorklet) {
-    return false;
-  }
-
-  try {
-    if (!registrationPromise) {
-      const blob = new Blob([PRO_REVERB_WORKLET_CODE], { type: 'application/javascript' });
-      const url = URL.createObjectURL(blob);
-      registrationPromise = context.audioWorklet.addModule(url).then(() => {
-        URL.revokeObjectURL(url);
-      });
-    }
-    await registrationPromise;
-    registeredContexts.add(context);
-    return true;
-  } catch (err) {
-    console.warn('Failed to register ProReverb AudioWorklet, falling back to JS AudioNode:', err);
-    return false;
-  }
+export interface ReverbTelemetry {
+  inputRms: number;
+  reverbRms: number;
+  feedbackRms: number;
+  outputRms: number;
+  isProcessing: boolean;
 }
 
 /**
- * Custom AudioWorkletNode / AudioNode Wrapper for the Pro Algorithmic Reverb DSP
+ * Analog Circuit Reverb Node (Tone.js AudioNode compatible)
+ * Implements the NE5532 + PT2399 / Belton Brick circuit diagram.
  */
-export class ProReverbNode {
-  public inputNode: Tone.Gain;
-  public outputNode: Tone.Gain;
-  public input: Tone.Gain;
-  public output: Tone.Gain;
-  private workletNode: AudioWorkletNode | null = null;
-  private jsEngine: ReverbEngine | null = null;
-  private scriptNode: ScriptProcessorNode | null = null;
+export class ProReverbNode extends Tone.ToneAudioNode<any> {
+  readonly name: string = 'ProReverbNode';
+  public static lastActiveInstance: ProReverbNode | null = null;
+  public static instances: Set<ProReverbNode> = new Set();
+
+  public readonly input: Tone.Gain;
+  public readonly output: Tone.Gain;
+  public readonly inputNode: Tone.Gain;
+  public readonly outputNode: Tone.Gain;
+  public processorNode: ScriptProcessorNode | null = null;
+
+  private rawCtx: AudioContext | BaseAudioContext;
+  private jsEngine: ReverbEngine;
   private params: ReverbParams;
-  public isWorkletReady: boolean = false;
 
-  constructor(context: BaseAudioContext, initialParams: Partial<ReverbParams> = {}) {
+  // Real-time circuit telemetry
+  public telemetry: ReverbTelemetry = {
+    inputRms: 0,
+    reverbRms: 0,
+    feedbackRms: 0,
+    outputRms: 0,
+    isProcessing: false,
+  };
+
+  constructor(context?: any, initialParams: Partial<ReverbParams> = {}) {
+    super();
+
+    // Safely extract the underlying native Web Audio AudioContext / BaseAudioContext
+    const raw: any =
+      (context && typeof context.createScriptProcessor === 'function' && context) ||
+      (context && context.rawContext && typeof context.rawContext.createScriptProcessor === 'function' && context.rawContext) ||
+      (context && context._context && typeof context._context.createScriptProcessor === 'function' && context._context) ||
+      (this.context && (this.context as any).rawContext && typeof (this.context as any).rawContext.createScriptProcessor === 'function' && (this.context as any).rawContext) ||
+      (Tone.getContext && Tone.getContext().rawContext && typeof (Tone.getContext().rawContext as any).createScriptProcessor === 'function' && Tone.getContext().rawContext) ||
+      (Tone.context && (Tone.context as any).rawContext && typeof (Tone.context as any).rawContext.createScriptProcessor === 'function' && (Tone.context as any).rawContext) ||
+      (Tone.context as any) ||
+      context;
+
+    this.rawCtx = raw;
+    const sampleRate = (raw && raw.sampleRate) || 44100;
+
     this.params = { ...DEFAULT_REVERB_PARAMS, ...initialParams };
+    this.jsEngine = new ReverbEngine(sampleRate, this.params);
 
-    this.inputNode = new Tone.Gain(1);
-    this.outputNode = new Tone.Gain(1);
+    // Initialize Tone.Gain endpoints
+    this.inputNode = new Tone.Gain({ context: this.context });
+    this.outputNode = new Tone.Gain({ context: this.context });
     this.input = this.inputNode;
     this.output = this.outputNode;
 
-    // Temporary dry pass-through until DSP node is attached
-    Tone.connect(this.inputNode, this.outputNode);
+    // Create synchronous audio processor node for 100% reliable real-time execution
+    try {
+      const bufferSize = 512;
+      let procNode: ScriptProcessorNode | null = null;
 
-    // Attempt to register AudioWorklet
-    const rawCtx = context || Tone.getContext().rawContext;
-    ensureReverbWorkletRegistered(rawCtx).then((registered) => {
-      if (registered && rawCtx.audioWorklet) {
-        try {
-          this.workletNode = new AudioWorkletNode(rawCtx, 'pro-reverb-processor', {
-            numberOfInputs: 1,
-            numberOfOutputs: 1,
-            outputChannelCount: [2],
-          });
-
-          this.workletNode.port.postMessage({
-            type: 'UPDATE_PARAMS',
-            params: this.params,
-          });
-
-          try {
-            this.inputNode.disconnect();
-          } catch {
-            // ignore
-          }
-          try {
-            if ((this.inputNode as any).output) {
-              (this.inputNode as any).output.connect(this.workletNode);
-            } else {
-              Tone.connect(this.inputNode, this.workletNode);
-            }
-          } catch {
-            // ignore
-          }
-          try {
-            const dest = (this.outputNode as any).input || (this.outputNode as any)._gainNode || (this.outputNode as any).output || this.outputNode;
-            this.workletNode.connect(dest);
-          } catch {
-            // ignore
-          }
-          this.isWorkletReady = true;
-          return;
-        } catch (e) {
-          console.warn('AudioWorkletNode instantiation failed:', e);
-        }
+      if (this.rawCtx && typeof (this.rawCtx as any).createScriptProcessor === 'function') {
+        procNode = (this.rawCtx as any).createScriptProcessor(bufferSize, 2, 2);
+      } else if (this.rawCtx && typeof (this.rawCtx as any).createJavaScriptNode === 'function') {
+        procNode = (this.rawCtx as any).createJavaScriptNode(bufferSize, 2, 2);
+      } else if (Tone.getContext && Tone.getContext().rawContext && typeof (Tone.getContext().rawContext as any).createScriptProcessor === 'function') {
+        procNode = (Tone.getContext().rawContext as any).createScriptProcessor(bufferSize, 2, 2);
       }
 
-      // Fallback DSP Engine for Contexts that support ScriptProcessor
-      if (typeof (rawCtx as any).createScriptProcessor === 'function') {
-        try {
-          this.jsEngine = new ReverbEngine(rawCtx.sampleRate, this.params);
-          this.scriptNode = (rawCtx as any).createScriptProcessor(512, 2, 2);
-          this.scriptNode.onaudioprocess = (e) => {
-            if (!this.jsEngine) return;
-            const inL = e.inputBuffer.getChannelData(0);
-            const inR = e.inputBuffer.numberOfChannels > 1 ? e.inputBuffer.getChannelData(1) : inL;
-            const outL = e.outputBuffer.getChannelData(0);
-            const outR = e.outputBuffer.getChannelData(1);
-
-            for (let i = 0; i < inL.length; i++) {
-              const res = this.jsEngine.processSample(inL[i], inR[i]);
-              outL[i] = res.outL;
-              outR[i] = res.outR;
-            }
-          };
-
-          try {
-            this.inputNode.disconnect();
-          } catch {
-            // ignore
-          }
-          try {
-            if ((this.inputNode as any).output) {
-              (this.inputNode as any).output.connect(this.scriptNode);
-            } else {
-              Tone.connect(this.inputNode, this.scriptNode);
-            }
-          } catch {
-            // ignore
-          }
-          try {
-            const dest = (this.outputNode as any).input || (this.outputNode as any)._gainNode || (this.outputNode as any).output || this.outputNode;
-            this.scriptNode.connect(dest);
-          } catch {
-            // ignore
-          }
-        } catch (err) {
-          console.warn('ScriptProcessor fallback failed:', err);
-        }
+      if (!procNode) {
+        throw new Error('createScriptProcessor is unavailable in current context');
       }
-    }).catch((err) => {
-      console.warn('Reverb worklet registration catch:', err);
-    });
+
+      this.processorNode = procNode;
+
+      let inSumSq = 0;
+      let outSumSq = 0;
+      let sampleCount = 0;
+
+      this.processorNode.onaudioprocess = (e) => {
+        const inL = e.inputBuffer.getChannelData(0);
+        const inR = e.inputBuffer.numberOfChannels > 1 ? e.inputBuffer.getChannelData(1) : inL;
+        const outL = e.outputBuffer.getChannelData(0);
+        const outR = e.outputBuffer.getChannelData(1);
+
+        for (let i = 0; i < inL.length; i++) {
+          const sInL = inL[i];
+          const sInR = inR[i];
+          const res = this.jsEngine.processSample(sInL, sInR);
+          outL[i] = res.outL;
+          outR[i] = res.outR;
+
+          inSumSq += sInL * sInL + sInR * sInR;
+          outSumSq += res.outL * res.outL + res.outR * res.outR;
+          sampleCount += 2;
+        }
+
+        if (sampleCount >= 1024) {
+          const inRms = Math.sqrt(inSumSq / sampleCount);
+          const outRms = Math.sqrt(outSumSq / sampleCount);
+          this.telemetry.inputRms = inRms;
+          this.telemetry.outputRms = outRms;
+          this.telemetry.isProcessing = inRms > 0.0001 || outRms > 0.0001;
+          inSumSq = 0;
+          outSumSq = 0;
+          sampleCount = 0;
+        }
+      };
+
+      // Native audio graph wiring: inputNode -> processorNode -> outputNode
+      const nativeIn = (this.inputNode.input as GainNode) || (this.inputNode as any)._gainNode || this.inputNode.output;
+      const nativeOut = (this.outputNode.input as GainNode) || (this.outputNode as any)._gainNode || this.outputNode.output;
+
+      if (nativeIn && typeof (nativeIn as any).connect === 'function') {
+        (nativeIn as any).connect(this.processorNode);
+      }
+      if (nativeOut && typeof (this.processorNode as any).connect === 'function') {
+        this.processorNode.connect(nativeOut as any);
+      }
+    } catch (err) {
+      console.warn('ScriptProcessor initialization failed, establishing bypass:', err);
+      Tone.connect(this.inputNode, this.outputNode);
+    }
+
+    ProReverbNode.lastActiveInstance = this;
+    ProReverbNode.instances.add(this);
   }
 
   public setParams(newParams: Partial<ReverbParams>): void {
     this.params = { ...this.params, ...newParams };
-    if (this.workletNode) {
-      this.workletNode.port.postMessage({
-        type: 'UPDATE_PARAMS',
-        params: this.params,
-      });
-    }
-    if (this.jsEngine) {
-      this.jsEngine.setParams(this.params);
-    }
+    this.jsEngine.setParams(this.params);
   }
 
-  public connect(destination: any): any {
-    return Tone.connect(this.outputNode, destination);
+  public getTelemetry(): ReverbTelemetry {
+    return { ...this.telemetry };
   }
 
-  public dispose(): void {
+  public dispose(): this {
+    ProReverbNode.instances.delete(this);
+    if (ProReverbNode.lastActiveInstance === this) {
+      ProReverbNode.lastActiveInstance = null;
+    }
+
     try {
-      if (this.workletNode) {
-        try { this.workletNode.disconnect(); } catch {}
-        this.workletNode = null;
+      if (this.processorNode) {
+        try { this.processorNode.disconnect(); } catch {}
+        this.processorNode.onaudioprocess = null;
+        this.processorNode = null;
       }
-      if (this.scriptNode) {
-        try { this.scriptNode.disconnect(); } catch {}
-        this.scriptNode.onaudioprocess = null;
-        this.scriptNode = null;
+      if (this.inputNode) {
+        try { this.inputNode.dispose(); } catch {}
       }
-      if (this.inputNode && typeof (this.inputNode as any).dispose === 'function') {
-        try { (this.inputNode as any).dispose(); } catch {}
-      } else if (this.inputNode) {
-        try { this.inputNode.disconnect(); } catch {}
+      if (this.outputNode) {
+        try { this.outputNode.dispose(); } catch {}
       }
-      if (this.outputNode && typeof (this.outputNode as any).dispose === 'function') {
-        try { (this.outputNode as any).dispose(); } catch {}
-      } else if (this.outputNode) {
-        try { this.outputNode.disconnect(); } catch {}
-      }
-    } catch {
-      // ignore
-    }
+    } catch {}
+
+    super.dispose();
+    return this;
   }
 }

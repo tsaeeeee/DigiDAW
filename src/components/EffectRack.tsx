@@ -10,8 +10,8 @@ import { DelayModal } from './DelayModal';
 import { SaturatorModal } from './SaturatorModal';
 import { PitchyModal } from './PitchyModal';
 
-const MIN_SLOTS = 4;
-const MAX_SLOTS = 7;
+const MIN_SLOTS = 5;
+const MAX_SLOTS = 5;
 
 export const DEDICATED_EFFECTS: { type: EffectType; name: string; shortCode: string; color: string; desc: string; icon: string }[] = [
   { type: 'Compressor', name: 'Compressor', shortCode: 'COMP', color: '#f59e0b', desc: 'Dynamic range & punch control', icon: '🎛️' },

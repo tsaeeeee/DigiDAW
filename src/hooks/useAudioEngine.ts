@@ -24,59 +24,112 @@ const INITIAL_TRACK_COUNT = 3;
 const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
 export const createDefaultEffects = (): EffectSlot[] =>
-  Array.from({ length: 4 }).map(() => ({
+  Array.from({ length: 5 }).map(() => ({
     id: crypto.randomUUID(),
     type: null,
     bypassed: false,
   }));
 
+function getAudioNodeInput(node: any): any {
+  if (!node) return null;
+  if (node.inputNode) return node.inputNode;
+  if (node.input && typeof node.input.connect === 'function') return node.input;
+  if ((node as any)._gainNode) return (node as any)._gainNode;
+  return node;
+}
+
+function getAudioNodeOutput(node: any): any {
+  if (!node) return null;
+  if (node.outputNode) return node.outputNode;
+  if (node.output && typeof node.output.connect === 'function') return node.output;
+  if ((node as any)._gainNode) return (node as any)._gainNode;
+  return node;
+}
+
+export function safeConnect(src: any, dst: any) {
+  if (!src || !dst) return;
+  const srcOut = getAudioNodeOutput(src);
+  const dstIn = getAudioNodeInput(dst);
+
+  // 1. Try Tone.connect directly on original objects
+  try {
+    Tone.connect(src, dst);
+    return;
+  } catch {}
+
+  // 2. Try native / resolved node connect
+  try {
+    if (typeof src.connect === 'function') {
+      src.connect(dstIn);
+      return;
+    }
+  } catch {}
+
+  try {
+    if (typeof (srcOut as any).connect === 'function') {
+      (srcOut as any).connect(dstIn);
+      return;
+    }
+  } catch {}
+
+  // 3. Fallback Tone.connect on resolved endpoints
+  try {
+    Tone.connect(srcOut, dstIn);
+  } catch (err) {
+    console.warn('safeConnect fallback warning:', err);
+  }
+}
+
+export function safeDisconnect(node: any) {
+  if (!node) return;
+  try {
+    if (typeof node.disconnect === 'function') {
+      node.disconnect();
+    }
+  } catch {}
+  try {
+    const srcOut = getAudioNodeOutput(node);
+    if (srcOut && srcOut !== node && typeof srcOut.disconnect === 'function') {
+      srcOut.disconnect();
+    }
+  } catch {}
+}
+
 export class StereoChannel {
-  public input: GainNode;
-  public output: GainNode;
-  public preFaderNode: GainNode;
+  public input: Tone.Gain;
+  public output: Tone.Gain;
+  public preFaderNode: Tone.Gain;
   public preFaderMeter: Tone.Meter;
   public fft: Tone.Analyser;
-  private panner: StereoPannerNode;
-  private volNode: GainNode;
+  private panner: Tone.Panner;
+  private volNode: Tone.Gain;
   private effectsNodes: any[] = [];
   private activeEffectInstances: { type: EffectType; nodes: any[] }[] = [];
   private _volumeDb: number = 0;
   private _pan: number = 0;
   private _muted: boolean = false;
+  private context: BaseAudioContext;
 
   constructor(context: BaseAudioContext) {
-    this.input = context.createGain();
-    this.input.channelCount = 2;
-    this.input.channelCountMode = "explicit";
-    this.input.channelInterpretation = "speakers";
+    this.context = context || Tone.getContext().rawContext;
 
-    this.preFaderNode = context.createGain();
-    this.preFaderNode.channelCount = 2;
-    this.preFaderNode.channelCountMode = "explicit";
-    this.preFaderNode.channelInterpretation = "speakers";
+    this.input = new Tone.Gain({ gain: 1 });
+    this.preFaderNode = new Tone.Gain({ gain: 1 });
+    this.panner = new Tone.Panner(0);
+    this.volNode = new Tone.Gain({ gain: 1 });
+    this.output = new Tone.Gain({ gain: 1 });
 
-    this.preFaderMeter = new Tone.Meter({ channelCount: 2, context: context as any });
-    this.fft = new Tone.Analyser({ type: 'fft', size: 128, context: context as any });
+    this.preFaderMeter = new Tone.Meter({ channelCount: 2 });
+    this.fft = new Tone.Analyser({ type: 'fft', size: 128 });
 
-    Tone.connect(this.preFaderNode, this.preFaderMeter);
-    Tone.connect(this.preFaderNode, this.fft);
+    safeConnect(this.preFaderNode, this.preFaderMeter);
+    safeConnect(this.preFaderNode, this.fft);
 
-    this.panner = context.createStereoPanner();
-
-    this.volNode = context.createGain();
-    this.volNode.channelCount = 2;
-    this.volNode.channelCountMode = "explicit";
-    this.volNode.channelInterpretation = "speakers";
-
-    this.output = context.createGain();
-    this.output.channelCount = 2;
-    this.output.channelCountMode = "explicit";
-    this.output.channelInterpretation = "speakers";
-
-    this.input.connect(this.preFaderNode);
-    this.preFaderNode.connect(this.panner);
-    this.panner.connect(this.volNode);
-    this.volNode.connect(this.output);
+    // Initial pass-through wiring: input -> preFaderNode -> panner -> volNode -> output
+    safeConnect(this.input, this.preFaderNode);
+    safeConnect(this.preFaderNode, this.panner);
+    safeConnect(this.panner, this.volNode);
+    safeConnect(this.volNode, this.output);
 
     this.updateVolume();
     this.updatePan();
@@ -261,14 +314,13 @@ export class StereoChannel {
       return;
     }
 
-    // Dispose previous effects
+    // Step 1: Disconnect and dispose previous effects
     this.activeEffectInstances.forEach(inst => {
       inst.nodes.forEach(node => {
         try {
+          safeDisconnect(node);
           if (node && typeof node.dispose === 'function') {
             node.dispose();
-          } else if (node && typeof node.disconnect === 'function') {
-            node.disconnect();
           }
         } catch {
           // ignore
@@ -278,31 +330,24 @@ export class StereoChannel {
     this.effectsNodes = [];
     this.activeEffectInstances = [];
 
-    try {
-      this.input.disconnect();
-    } catch {
-      // ignore
-    }
-    try {
-      this.preFaderNode.disconnect();
-    } catch {
-      // ignore
-    }
+    // Step 2: Disconnect input and preFader connections
+    safeDisconnect(this.input);
+    safeDisconnect(this.preFaderNode);
 
-    if (this.preFaderNode) {
-      try {
-        Tone.connect(this.preFaderNode, this.preFaderMeter);
-        Tone.connect(this.preFaderNode, this.fft);
-        Tone.connect(this.preFaderNode, this.panner);
-      } catch {}
-    }
+    // Re-wire preFader meters and downstream path
+    safeConnect(this.preFaderNode, this.preFaderMeter);
+    safeConnect(this.preFaderNode, this.fft);
+    safeConnect(this.preFaderNode, this.panner);
+    safeConnect(this.panner, this.volNode);
+    safeConnect(this.volNode, this.output);
 
+    // If no active effects, pass-through directly: input -> preFaderNode
     if (activeSlots.length === 0) {
-      Tone.connect(this.input, this.preFaderNode);
+      safeConnect(this.input, this.preFaderNode);
       return;
     }
 
-    const nodes: any[] = [];
+    const allNodes: any[] = [];
     const newInstances: { type: EffectType; nodes: any[] }[] = [];
 
     for (const slot of activeSlots) {
@@ -456,35 +501,32 @@ export class StereoChannel {
         }
 
         if (createdNodes.length > 0) {
-          nodes.push(...createdNodes);
+          allNodes.push(...createdNodes);
           newInstances.push({ type: slot.type!, nodes: createdNodes });
         }
       } catch (e) {
-        console.warn('Effect creation failed:', slot.type, e);
+        console.warn('Effect creation failed for type:', slot.type, e);
       }
     }
 
-    this.effectsNodes = nodes;
+    this.effectsNodes = allNodes;
     this.activeEffectInstances = newInstances;
 
-    if (nodes.length === 0) {
-      try {
-        Tone.connect(this.input, this.preFaderNode);
-      } catch {}
+    // Step 3: Wire the full serial chain input -> node0 -> node1 ... -> preFaderNode
+    if (allNodes.length === 0) {
+      safeConnect(this.input, this.preFaderNode);
       return;
     }
 
     try {
-      Tone.connect(this.input, nodes[0]);
-      for (let i = 0; i < nodes.length - 1; i++) {
-        Tone.connect(nodes[i], nodes[i + 1]);
+      safeConnect(this.input, allNodes[0]);
+      for (let i = 0; i < allNodes.length - 1; i++) {
+        safeConnect(allNodes[i], allNodes[i + 1]);
       }
-      Tone.connect(nodes[nodes.length - 1], this.preFaderNode);
+      safeConnect(allNodes[allNodes.length - 1], this.preFaderNode);
     } catch (err) {
       console.warn('Error connecting effect chain nodes:', err);
-      try {
-        Tone.connect(this.input, this.preFaderNode);
-      } catch {}
+      safeConnect(this.input, this.preFaderNode);
     }
   }
 
@@ -501,7 +543,7 @@ export class StereoChannel {
   }
 
   public connect(destination: any) {
-    Tone.connect(this.output, destination);
+    safeConnect(this.output, destination);
     return this;
   }
 
@@ -519,19 +561,23 @@ export class StereoChannel {
       }
       this.effectsNodes.forEach(node => {
         try {
+          safeDisconnect(node);
           if (node && typeof node.dispose === 'function') {
             node.dispose();
-          } else if (node && typeof node.disconnect === 'function') {
-            node.disconnect();
           }
         } catch {}
       });
-      this.input.disconnect();
-      this.preFaderNode.disconnect();
-      this.panner.disconnect();
-      this.volNode.disconnect();
-      this.output.disconnect();
-    } catch {
+      safeDisconnect(this.input);
+      safeDisconnect(this.preFaderNode);
+      safeDisconnect(this.panner);
+      safeDisconnect(this.volNode);
+      safeDisconnect(this.output);
+      this.input.dispose();
+      this.preFaderNode.dispose();
+      this.panner.dispose();
+      this.volNode.dispose();
+      this.output.dispose();
+    } catch (e) {
       // ignore
     }
   }

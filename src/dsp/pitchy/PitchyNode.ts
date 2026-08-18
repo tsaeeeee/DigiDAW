@@ -112,9 +112,14 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
   constructor(options: PitchyOptions = {}) {
     super();
 
-    const rawContext = (this.context.rawContext as AudioContext) || (Tone.getContext().rawContext as AudioContext);
+    const rawContext: any =
+      (this.context && (this.context as any).rawContext && typeof (this.context as any).rawContext.createScriptProcessor === 'function' && (this.context as any).rawContext) ||
+      (Tone.getContext && Tone.getContext().rawContext && typeof (Tone.getContext().rawContext as any).createScriptProcessor === 'function' && Tone.getContext().rawContext) ||
+      (Tone.context && (Tone.context as any).rawContext && typeof (Tone.context as any).rawContext.createScriptProcessor === 'function' && (Tone.context as any).rawContext) ||
+      (this.context as any);
+
     this.rawCtx = rawContext;
-    this.sampleRate = rawContext.sampleRate || 44100;
+    this.sampleRate = (rawContext && rawContext.sampleRate) || 44100;
 
     // Allocate ring buffers
     this.ringL = new Float32Array(this.ringBufferSize);
@@ -131,36 +136,54 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
     this.output = this.outputNode;
 
     // Presence / Formant color shaping via native BiquadFilterNode
-    this.nativeFilter = this.rawCtx.createBiquadFilter();
-    this.nativeFilter.type = 'peaking';
-    this.nativeFilter.frequency.value = 3200;
-    this.nativeFilter.gain.value = 0;
-    this.nativeFilter.Q.value = 0.8;
+    try {
+      this.nativeFilter = this.rawCtx.createBiquadFilter();
+      this.nativeFilter.type = 'peaking';
+      this.nativeFilter.frequency.value = 3200;
+      this.nativeFilter.gain.value = 0;
+      this.nativeFilter.Q.value = 0.8;
+    } catch {
+      // fallback
+    }
 
     // Create Real-time Audio DSP Processor Node (1024 sample buffer for reliable processing)
-    const procSize = 1024;
-    this.processorNode = this.rawCtx.createScriptProcessor(procSize, 2, 2);
-    this.processorNode.onaudioprocess = (e: AudioProcessingEvent) => {
-      this.processAudio(e);
-    };
-
-    PitchyNode.activeProcessors.add(this.processorNode);
-
-    // Direct Native WebAudio Graph Routing:
-    // nativeIn (GainNode) -> processorNode (ScriptProcessor) -> nativeFilter (BiquadFilter) -> nativeOut (GainNode)
     try {
-      const nativeIn = (this.inputNode.input as GainNode) || (this.inputNode as any)._gainNode || this.inputNode.output;
-      const nativeOut = (this.outputNode.input as GainNode) || (this.outputNode as any)._gainNode || this.outputNode.output;
-
-      if (nativeIn && typeof nativeIn.connect === 'function') {
-        nativeIn.connect(this.processorNode);
+      const procSize = 1024;
+      let proc: ScriptProcessorNode | null = null;
+      if (this.rawCtx && typeof (this.rawCtx as any).createScriptProcessor === 'function') {
+        proc = (this.rawCtx as any).createScriptProcessor(procSize, 2, 2);
+      } else if (Tone.getContext && Tone.getContext().rawContext && typeof (Tone.getContext().rawContext as any).createScriptProcessor === 'function') {
+        proc = (Tone.getContext().rawContext as any).createScriptProcessor(procSize, 2, 2);
       }
-      this.processorNode.connect(this.nativeFilter);
-      if (nativeOut && typeof nativeOut.connect === 'function') {
-        this.nativeFilter.connect(nativeOut);
+
+      if (proc) {
+        this.processorNode = proc;
+        this.processorNode.onaudioprocess = (e: AudioProcessingEvent) => {
+          this.processAudio(e);
+        };
+        PitchyNode.activeProcessors.add(this.processorNode);
+
+        // Direct Native WebAudio Graph Routing:
+        const nativeIn = (this.inputNode.input as GainNode) || (this.inputNode as any)._gainNode || this.inputNode.output;
+        const nativeOut = (this.outputNode.input as GainNode) || (this.outputNode as any)._gainNode || this.outputNode.output;
+
+        if (nativeIn && typeof nativeIn.connect === 'function') {
+          nativeIn.connect(this.processorNode);
+        }
+        if (this.nativeFilter) {
+          this.processorNode.connect(this.nativeFilter);
+          if (nativeOut && typeof nativeOut.connect === 'function') {
+            this.nativeFilter.connect(nativeOut);
+          }
+        } else if (nativeOut && typeof nativeOut.connect === 'function') {
+          this.processorNode.connect(nativeOut);
+        }
+      } else {
+        Tone.connect(this.inputNode, this.outputNode);
       }
     } catch (err) {
-      console.error('PitchyNode routing error:', err);
+      console.warn('PitchyNode initialization bypass:', err);
+      Tone.connect(this.inputNode, this.outputNode);
     }
 
     this.update(options);
