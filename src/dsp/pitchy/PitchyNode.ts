@@ -47,7 +47,7 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
   private correlationScratch: Float32Array;
   private analysisTimer: ReturnType<typeof setInterval> | null = null;
   private rawCtx: BaseAudioContext;
-  private disposed = false;
+  private isDisposedInternal = false;
 
   public referenceHz = 440;
   public speed = 75;
@@ -163,7 +163,7 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
   }
 
   private analysePitch() {
-    if (this.disposed) return;
+    if (this.isDisposedInternal) return;
 
     this.analyser.getFloatTimeDomainData(this.analysisData);
     const source = this.analysisData;
@@ -317,7 +317,7 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
   }
 
   public dispose(): this {
-    this.disposed = true;
+    this.isDisposedInternal = true;
 
     if (this.analysisTimer) {
       clearInterval(this.analysisTimer);
