@@ -1,113 +1,115 @@
 import * as Tone from 'tone';
 
-/**
- * Analog Op-Amp Saturation & WaveShaping Module
- * Emulates console analog saturation using asymmetrical soft-clipping curves.
- */
-
 export type SaturationMode = 'clean' | 'normal' | 'hot' | 'redline';
 
 export interface SaturationOptions {
-  inputGain?: number;       // dB (-20 to +20)
-  saturationDrive?: number; // Drive control (0 to 10)
+  inputGain?: number;
+  saturationDrive?: number;
   saturationMode?: SaturationMode;
-  outputGain?: number;      // dB (-12 to +12)
-  oversample?: OverSampleType; // 'none' | '2x' | '4x'
+  outputGain?: number;
+  oversample?: OverSampleType;
 }
 
 /**
- * Generates an asymmetrical soft-clipping transfer curve for Web Audio API WaveShaperNode / Tone.WaveShaper.
+ * Generates an asymmetrical soft-clipping transfer curve.
+ *
+ * Keep a little level compression in the curve instead of fully normalising
+ * every drive setting back to unity. The old full normalisation made strong
+ * drive settings sound much subtler than the UI suggested.
  */
 export function createSaturationCurve(
-  drive: number = 1.0,
+  drive: number = 1,
   asymmetry: number = 0.01,
-  samples: number = 2048
+  samples: number = 4096,
 ): Float32Array {
   const curve = new Float32Array(samples);
+  const safeDrive = Math.max(0.05, Math.min(40, drive));
+  const bias = Math.max(-0.35, Math.min(0.35, asymmetry));
+  const dcOffset = Math.tanh(bias * safeDrive);
 
-  for (let i = 0; i < samples; ++i) {
-    // Map array index to normalized signal level [-1, 1]
-    const x = (i * 2) / (samples - 1) - 1;
+  // Reference level prevents huge mode-to-mode loudness jumps without erasing
+  // the compression/saturation effect itself.
+  const reference = Math.max(0.35, Math.tanh(safeDrive * 0.72));
 
-    // Asymmetrical bias mimics transistor imbalance in analog console gain stages
-    const biasedX = x + asymmetry;
-
-    // Hyperbolic tangent (tanh) soft clipping
-    let y = Math.tanh(biasedX * drive);
-
-    // Subtract DC offset so silence yields exactly zero voltage
-    const offset = Math.tanh(asymmetry * drive);
-    y = y - offset;
-
-    // Normalize bounds so output peak is controlled
-    const maxVal = Math.tanh((1 + asymmetry) * drive) - offset;
-    const minVal = Math.tanh((-1 + asymmetry) * drive) - offset;
-    const maxBound = Math.max(Math.abs(maxVal), Math.abs(minVal));
-
-    if (maxBound > 0) {
-      curve[i] = Math.max(-1, Math.min(1, y / maxBound));
-    } else {
-      curve[i] = Math.max(-1, Math.min(1, y));
-    }
+  for (let i = 0; i < samples; i++) {
+    const x = (i / (samples - 1)) * 2 - 1;
+    const shaped = Math.tanh((x + bias) * safeDrive) - dcOffset;
+    curve[i] = Math.max(-1, Math.min(1, shaped / reference));
   }
 
   return curve;
 }
 
-/**
- * Calculates drive multiplier and asymmetry parameters based on console settings.
- */
 export function calculateSaturationParameters(
   inputGainDb: number = 0,
   saturationDrive: number = 0,
-  mode: SaturationMode = 'normal'
+  mode: SaturationMode = 'normal',
 ): { driveAmt: number; asymmetry: number } {
-  // Drive scales organically with input gain and drive control
-  const totalDriveDb = (inputGainDb > 0 ? inputGainDb * 0.75 : 0) + (saturationDrive * 3);
-  const baseDriveMultiplier = Math.pow(10, totalDriveDb / 20);
+  const driveKnob = Math.max(0, Math.min(10, saturationDrive));
+  const positiveInput = Math.max(0, inputGainDb);
 
-  let driveAmt = 1.0;
+  // Input gain already exists as a real gain stage, so only a small portion of
+  // it should influence the non-linearity itself. This avoids effectively
+  // applying input gain twice while still making "push the console" behaviour
+  // feel natural.
+  const inputInfluence = Math.pow(10, (positiveInput * 0.2) / 20);
+  const knobInfluence = 1 + Math.pow(driveKnob / 10, 1.35) * 7;
+
+  let modeDrive = 1;
   let asymmetry = 0.01;
 
   switch (mode) {
     case 'clean':
-      driveAmt = 1.0 + baseDriveMultiplier * 0.05;
-      asymmetry = 0.005;
+      modeDrive = 0.75;
+      asymmetry = 0.004;
       break;
     case 'normal':
-      driveAmt = 1.5 + baseDriveMultiplier * 0.5;
-      asymmetry = 0.03;
+      modeDrive = 1.25;
+      asymmetry = 0.025;
       break;
     case 'hot':
-      driveAmt = 2.5 + baseDriveMultiplier * 1.5;
-      asymmetry = 0.08;
+      modeDrive = 2.1;
+      asymmetry = 0.065;
       break;
     case 'redline':
-      driveAmt = 5.0 + baseDriveMultiplier * 4.0;
-      asymmetry = 0.18;
+      modeDrive = 3.6;
+      asymmetry = 0.14;
       break;
   }
 
-  return { driveAmt, asymmetry };
+  return {
+    driveAmt: Math.max(0.2, Math.min(40, modeDrive * knobInfluence * inputInfluence)),
+    asymmetry,
+  };
 }
 
 /**
- * Standalone Saturation Node wrapper for Tone.js audio graph.
- * Fully integrates Tone.Gain -> Tone.WaveShaper -> Tone.Gain for complete compatibility.
+ * Tone.js-compatible saturation wrapper.
+ * Audio path: input gain -> oversampled waveshaper -> output gain.
  */
 export class SaturationNode extends Tone.ToneAudioNode<any> {
-  readonly name: string = 'SaturationNode';
+  readonly name = 'SaturationNode';
+
   public waveshaper: Tone.WaveShaper;
   public readonly inputNode: Tone.Gain;
   public readonly outputNode: Tone.Gain;
   public readonly input: Tone.Gain;
   public readonly output: Tone.Gain;
 
+  private currentOptions: SaturationOptions = {};
+
   constructor(ctxOrOptions?: any, options?: SaturationOptions) {
     super();
+
     let opts: SaturationOptions = {};
     if (ctxOrOptions && typeof ctxOrOptions === 'object') {
-      if ('inputGain' in ctxOrOptions || 'saturationDrive' in ctxOrOptions || 'saturationMode' in ctxOrOptions || 'outputGain' in ctxOrOptions) {
+      if (
+        'inputGain' in ctxOrOptions ||
+        'saturationDrive' in ctxOrOptions ||
+        'saturationMode' in ctxOrOptions ||
+        'outputGain' in ctxOrOptions ||
+        'oversample' in ctxOrOptions
+      ) {
         opts = ctxOrOptions;
       } else if (options) {
         opts = options;
@@ -121,62 +123,48 @@ export class SaturationNode extends Tone.ToneAudioNode<any> {
 
     const { driveAmt, asymmetry } = calculateSaturationParameters(
       opts.inputGain ?? 0,
-      opts.saturationDrive ?? 3.0,
-      opts.saturationMode ?? 'normal'
+      opts.saturationDrive ?? 3,
+      opts.saturationMode ?? 'normal',
     );
 
-    const initialCurve = createSaturationCurve(driveAmt, asymmetry);
     this.waveshaper = new Tone.WaveShaper({
       context: this.context,
-      curve: initialCurve,
+      curve: createSaturationCurve(driveAmt, asymmetry),
     });
-    if (opts.oversample) {
-      this.waveshaper.oversample = opts.oversample;
-    }
 
-    // Connect Tone.Gain -> Tone.WaveShaper -> Tone.Gain
-    Tone.connect(this.inputNode, this.waveshaper);
-    Tone.connect(this.waveshaper, this.outputNode);
+    // 4x is a much safer default for a distortion stage and greatly reduces
+    // audible aliasing at Hot/Redline settings.
+    this.waveshaper.oversample = opts.oversample ?? '4x';
 
+    this.inputNode.chain(this.waveshaper, this.outputNode);
     this.update(opts);
   }
 
-  /**
-   * Update saturation parameters on the fly.
-   */
   public update(options: SaturationOptions): void {
-    const inputGain = options.inputGain ?? 0;
-    const drive = options.saturationDrive ?? 3.0;
-    const mode = options.saturationMode ?? 'normal';
-    const outputGain = options.outputGain ?? 0;
+    this.currentOptions = { ...this.currentOptions, ...options };
 
-    // Apply Input Gain (dB to linear)
-    const inLinear = Math.pow(10, inputGain / 20);
-    this.inputNode.gain.value = inLinear;
+    const inputGain = this.currentOptions.inputGain ?? 0;
+    const drive = this.currentOptions.saturationDrive ?? 3;
+    const mode = this.currentOptions.saturationMode ?? 'normal';
+    const outputGain = this.currentOptions.outputGain ?? 0;
 
-    // Apply Output Gain (dB to linear)
-    const outLinear = Math.pow(10, outputGain / 20);
-    this.outputNode.gain.value = outLinear;
+    this.inputNode.gain.value = Math.pow(10, Math.max(-20, Math.min(20, inputGain)) / 20);
+    this.outputNode.gain.value = Math.pow(10, Math.max(-12, Math.min(12, outputGain)) / 20);
 
     const { driveAmt, asymmetry } = calculateSaturationParameters(inputGain, drive, mode);
     this.waveshaper.curve = createSaturationCurve(driveAmt, asymmetry);
+    this.waveshaper.oversample = this.currentOptions.oversample ?? '4x';
   }
 
   public dispose(): this {
-    try {
-      this.inputNode.disconnect();
-      this.waveshaper.disconnect();
-      this.outputNode.disconnect();
-    } catch {
-      // ignore
-    }
-    try {
-      this.inputNode.dispose();
-      this.waveshaper.dispose();
-      this.outputNode.dispose();
-    } catch {
-      // ignore
-    }
+    try { this.inputNode.disconnect(); } catch {}
+    try { this.waveshaper.disconnect(); } catch {}
+    try { this.outputNode.disconnect(); } catch {}
+
+    try { this.inputNode.dispose(); } catch {}
+    try { this.waveshaper.dispose(); } catch {}
+    try { this.outputNode.dispose(); } catch {}
+
     super.dispose();
     return this;
   }
