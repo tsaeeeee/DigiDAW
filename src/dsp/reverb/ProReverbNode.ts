@@ -47,7 +47,7 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
   private outputMeterData: Float32Array;
 
   private rebuildTimer: ReturnType<typeof setTimeout> | null = null;
-  private disposed = false;
+  private isDisposedInternal = false;
 
   constructor(context?: any, initialParams: Partial<ReverbParams> = {}) {
     super();
@@ -175,7 +175,7 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
     if (this.rebuildTimer) clearTimeout(this.rebuildTimer);
     this.rebuildTimer = setTimeout(() => {
       this.rebuildTimer = null;
-      if (!this.disposed) this.rebuildImpulse();
+      if (!this.isDisposedInternal) this.rebuildImpulse();
     }, 90);
   }
 
@@ -274,7 +274,7 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
   }
 
   public dispose(): this {
-    this.disposed = true;
+    this.isDisposedInternal = true;
     if (this.rebuildTimer) {
       clearTimeout(this.rebuildTimer);
       this.rebuildTimer = null;
