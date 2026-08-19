@@ -12,11 +12,9 @@ export interface ReverbTelemetry {
 /**
  * Stable native Web Audio reverb node.
  *
- * The former implementation processed every sample in a ScriptProcessorNode,
- * which runs on the main thread and could silently fall back to a dry bypass.
- * This version keeps the same DigiDAW-facing API while using a native
- * ConvolverNode plus filter/gain stages, so the browser audio renderer owns the
- * realtime processing path.
+ * The audio path stays inside native browser audio nodes: dry path in parallel
+ * with a filtered pre-delay -> convolver -> damping path. Expensive impulse
+ * regeneration is debounced so knob drags do not continuously allocate IRs.
  */
 export class ProReverbNode extends Tone.ToneAudioNode<any> {
   readonly name = 'ProReverbNode';
@@ -38,11 +36,16 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
   private lowCut: BiquadFilterNode;
   private highCut: BiquadFilterNode;
   private bassShelf: BiquadFilterNode;
+  private dampingFilter: BiquadFilterNode;
   private convolver: ConvolverNode;
+
   private inputAnalyser: AnalyserNode;
+  private wetAnalyser: AnalyserNode;
   private outputAnalyser: AnalyserNode;
   private inputMeterData: Float32Array;
+  private wetMeterData: Float32Array;
   private outputMeterData: Float32Array;
+
   private rebuildTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
 
@@ -68,18 +71,25 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
     this.lowCut = raw.createBiquadFilter();
     this.highCut = raw.createBiquadFilter();
     this.bassShelf = raw.createBiquadFilter();
+    this.dampingFilter = raw.createBiquadFilter();
     this.convolver = raw.createConvolver();
 
     this.lowCut.type = 'highpass';
     this.highCut.type = 'lowpass';
     this.bassShelf.type = 'lowshelf';
+    this.dampingFilter.type = 'lowpass';
     this.convolver.normalize = true;
 
     this.inputAnalyser = raw.createAnalyser();
+    this.wetAnalyser = raw.createAnalyser();
     this.outputAnalyser = raw.createAnalyser();
+
     this.inputAnalyser.fftSize = 512;
+    this.wetAnalyser.fftSize = 512;
     this.outputAnalyser.fftSize = 512;
+
     this.inputMeterData = new Float32Array(this.inputAnalyser.fftSize);
+    this.wetMeterData = new Float32Array(this.wetAnalyser.fftSize);
     this.outputMeterData = new Float32Array(this.outputAnalyser.fftSize);
 
     const nativeIn = this.inputNode.input as AudioNode;
@@ -89,17 +99,19 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
     nativeIn.connect(this.dryGain);
     this.dryGain.connect(nativeOut);
 
-    // Wet path: pre-delay -> tone shaping -> convolution -> wet level.
+    // Wet path: pre-delay -> tone shaping -> convolution -> damping -> wet gain.
     nativeIn.connect(this.preDelay);
     this.preDelay.connect(this.lowCut);
     this.lowCut.connect(this.highCut);
     this.highCut.connect(this.bassShelf);
     this.bassShelf.connect(this.convolver);
-    this.convolver.connect(this.wetGain);
+    this.convolver.connect(this.dampingFilter);
+    this.dampingFilter.connect(this.wetGain);
     this.wetGain.connect(nativeOut);
 
     // Meter taps do not affect the audible path.
     nativeIn.connect(this.inputAnalyser);
+    this.dampingFilter.connect(this.wetAnalyser);
     nativeOut.connect(this.outputAnalyser);
 
     this.applyRealtimeParams();
@@ -120,14 +132,16 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
       previous.diff !== this.params.diff ||
       previous.mod !== this.params.mod ||
       previous.speed !== this.params.speed ||
-      previous.sep !== this.params.sep;
+      previous.sep !== this.params.sep ||
+      previous.er !== this.params.er ||
+      previous.mode !== this.params.mode;
 
     if (impulseChanged) this.scheduleImpulseRebuild();
   }
 
   private applyRealtimeParams() {
     const p = this.params;
-    const now = (this.rawCtx as AudioContext).currentTime || 0;
+    const now = this.rawCtx.currentTime || 0;
 
     const dry = Math.max(0, Math.min(1.25, (p.dry ?? 100) / 100));
     const wet = Math.max(0, Math.min(1.5, (p.wet ?? 50) / 100));
@@ -148,6 +162,13 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
     const bass = Math.max(0.5, Math.min(2, p.bass ?? 1));
     this.bassShelf.frequency.setTargetAtTime(Math.max(100, Math.min(2000, p.cross ?? 500)), now, 0.01);
     this.bassShelf.gain.setTargetAtTime(12 * Math.log2(bass), now, 0.01);
+
+    this.dampingFilter.frequency.setTargetAtTime(
+      Math.max(500, Math.min(18000, p.damp ?? 5000)),
+      now,
+      0.01,
+    );
+    this.dampingFilter.Q.setTargetAtTime(0.707, now, 0.01);
   }
 
   private scheduleImpulseRebuild() {
@@ -155,17 +176,19 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
     this.rebuildTimer = setTimeout(() => {
       this.rebuildTimer = null;
       if (!this.disposed) this.rebuildImpulse();
-    }, 70);
+    }, 90);
   }
 
   private rebuildImpulse() {
     const sr = this.rawCtx.sampleRate || 44100;
     const p = this.params;
+
     const decay = Math.max(0.2, Math.min(20, p.decay ?? 2.5));
     const size = Math.max(10, Math.min(100, p.size ?? 65)) / 100;
     const diffusion = Math.max(0, Math.min(100, p.diff ?? 80)) / 100;
     const mod = Math.max(0, Math.min(100, p.mod ?? 30)) / 100;
     const separation = Math.max(-1, Math.min(1, (p.sep ?? 0) / 100));
+    const sideMode = (p.mode ?? 0) === 1;
 
     const duration = Math.max(0.25, Math.min(12, decay * (0.6 + size * 0.65)));
     const length = Math.max(256, Math.floor(sr * duration));
@@ -189,7 +212,9 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
 
     const density = 0.14 + diffusion * 0.86;
     const modulationDepth = mod * 0.12;
-    const decorrelation = 0.35 + Math.abs(separation) * 0.45;
+    const decorrelation = sideMode
+      ? Math.min(1, 0.75 + Math.abs(separation) * 0.25)
+      : 0.35 + Math.abs(separation) * 0.45;
 
     for (let i = 0; i < length; i++) {
       const t = i / sr;
@@ -199,23 +224,29 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
 
       const gateL = Math.abs(rand(false)) < density ? 1 : 0;
       const gateR = Math.abs(rand(true)) < density ? 1 : 0;
-      const noiseL = rand(false) * gateL;
-      const noiseR = rand(true) * gateR;
-      const common = (noiseL + noiseR) * 0.5;
+      let noiseL = rand(false) * gateL;
+      let noiseR = rand(true) * gateR;
 
-      left[i] = (common * (1 - decorrelation) + noiseL * decorrelation) * envelope * build * flutter;
-      right[i] = (common * (1 - decorrelation) + noiseR * decorrelation) * envelope * build * flutter;
+      // Mid mode shares more energy between channels. Side mode deliberately
+      // decorrelates and polarity-flips part of the right response.
+      const common = (noiseL + noiseR) * 0.5;
+      noiseL = common * (1 - decorrelation) + noiseL * decorrelation;
+      noiseR = common * (1 - decorrelation) + noiseR * decorrelation;
+      if (sideMode) noiseR *= -1;
+
+      left[i] = noiseL * envelope * build * flutter;
+      right[i] = noiseR * envelope * build * flutter;
     }
 
-    // Add a few deterministic early reflections so short settings still sound
-    // like a room rather than plain filtered noise.
+    // Deterministic early reflections keep short settings room-like instead of
+    // sounding like filtered noise.
     const earlyMs = [7, 13, 23, 37, 53, 79];
     const earlyAmount = Math.max(0, Math.min(1, (p.er ?? 40) / 100));
     earlyMs.forEach((ms, index) => {
       const pos = Math.min(length - 1, Math.floor((ms / 1000) * sr * (0.65 + size * 0.8)));
       const amp = earlyAmount * (0.7 / (index + 1));
       left[pos] += amp * (index % 2 === 0 ? 1 : -0.75);
-      right[pos] += amp * (index % 2 === 0 ? 0.72 : -1);
+      right[pos] += amp * (index % 2 === 0 ? 0.72 : -1) * (sideMode ? -1 : 1);
     });
 
     this.convolver.buffer = impulse;
@@ -230,13 +261,13 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
 
   public getTelemetry(): ReverbTelemetry {
     const inputRms = this.readRms(this.inputAnalyser, this.inputMeterData);
+    const reverbRms = this.readRms(this.wetAnalyser, this.wetMeterData);
     const outputRms = this.readRms(this.outputAnalyser, this.outputMeterData);
-    const wetRatio = Math.max(0, Math.min(1, (this.params.wet ?? 50) / 100));
 
     return {
       inputRms,
-      reverbRms: outputRms * wetRatio,
-      feedbackRms: outputRms * wetRatio * Math.min(0.95, (this.params.decay ?? 2.5) / 20),
+      reverbRms,
+      feedbackRms: reverbRms * Math.min(0.95, (this.params.decay ?? 2.5) / 20),
       outputRms,
       isProcessing: inputRms > 0.0001 || outputRms > 0.0001,
     };
@@ -244,7 +275,10 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
 
   public dispose(): this {
     this.disposed = true;
-    if (this.rebuildTimer) clearTimeout(this.rebuildTimer);
+    if (this.rebuildTimer) {
+      clearTimeout(this.rebuildTimer);
+      this.rebuildTimer = null;
+    }
 
     ProReverbNode.instances.delete(this);
     if (ProReverbNode.lastActiveInstance === this) {
@@ -258,16 +292,16 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
       this.lowCut,
       this.highCut,
       this.bassShelf,
+      this.dampingFilter,
       this.convolver,
       this.inputAnalyser,
+      this.wetAnalyser,
       this.outputAnalyser,
     ];
+
     nodes.forEach(node => {
       try { node.disconnect(); } catch {}
     });
-
-    try { this.inputNode.dispose(); } catch {}
-    try { this.outputNode.dispose(); } catch {}
 
     super.dispose();
     return this;
