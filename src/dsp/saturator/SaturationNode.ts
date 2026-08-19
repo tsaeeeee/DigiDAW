@@ -27,8 +27,6 @@ export function createSaturationCurve(
   const bias = Math.max(-0.35, Math.min(0.35, asymmetry));
   const dcOffset = Math.tanh(bias * safeDrive);
 
-  // Reference level prevents huge mode-to-mode loudness jumps without erasing
-  // the compression/saturation effect itself.
   const reference = Math.max(0.35, Math.tanh(safeDrive * 0.72));
 
   for (let i = 0; i < samples; i++) {
@@ -50,8 +48,7 @@ export function calculateSaturationParameters(
 
   // Input gain already exists as a real gain stage, so only a small portion of
   // it should influence the non-linearity itself. This avoids effectively
-  // applying input gain twice while still making "push the console" behaviour
-  // feel natural.
+  // applying input gain twice while preserving console-style push behaviour.
   const inputInfluence = Math.pow(10, (positiveInput * 0.2) / 20);
   const knobInfluence = 1 + Math.pow(driveKnob / 10, 1.35) * 7;
 
@@ -132,10 +129,7 @@ export class SaturationNode extends Tone.ToneAudioNode<any> {
       curve: createSaturationCurve(driveAmt, asymmetry),
     });
 
-    // 4x is a much safer default for a distortion stage and greatly reduces
-    // audible aliasing at Hot/Redline settings.
     this.waveshaper.oversample = opts.oversample ?? '4x';
-
     this.inputNode.chain(this.waveshaper, this.outputNode);
     this.update(opts);
   }
@@ -157,14 +151,9 @@ export class SaturationNode extends Tone.ToneAudioNode<any> {
   }
 
   public dispose(): this {
-    try { this.inputNode.disconnect(); } catch {}
-    try { this.waveshaper.disconnect(); } catch {}
-    try { this.outputNode.disconnect(); } catch {}
-
-    try { this.inputNode.dispose(); } catch {}
+    // ToneAudioNode.dispose() owns input/output endpoint cleanup. Dispose only
+    // the internal waveshaper here to avoid double-disposing the Gain wrappers.
     try { this.waveshaper.dispose(); } catch {}
-    try { this.outputNode.dispose(); } catch {}
-
     super.dispose();
     return this;
   }
