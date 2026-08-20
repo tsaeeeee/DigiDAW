@@ -173,7 +173,11 @@ export function DeEsserModal({
               <span style={{ color: detectorActive ? '#67e8f9' : '#718087' }}>{`${telemetry.triggerExcessDb.toFixed(1)} dB`}</span>
             </div>
             <div className="absolute right-3 bottom-2 text-[8px] font-bold text-[#53646b]">
-              {telemetry.backend === 'worklet' ? 'Dynamic split engine' : telemetry.backend === 'native-fallback' ? 'Compatibility engine' : 'Loading DSP…'}
+              {telemetry.backend === 'worklet'
+                ? 'Single-path dynamic shelf'
+                : telemetry.backend === 'native-fallback'
+                  ? 'Safe serial fallback'
+                  : 'Loading DSP…'}
             </div>
           </div>
 
