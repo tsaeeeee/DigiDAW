@@ -25,9 +25,19 @@ export interface PitchyTelemetry {
 /**
  * Realtime chromatic pitch-correction node.
  *
- * Tone.PitchShift performs the actual audio transformation. A control-rate YIN
- * detector estimates the vocal fundamental and drives a nearest-semitone
- * correction. The detector is intentionally kept off the audio thread.
+ * The current audio transform still uses Tone.PitchShift, but the control
+ * engine is deliberately more vocal-oriented than a raw nearest-note snap:
+ * - YIN fundamental estimation
+ * - octave-jump rejection
+ * - time-constant pitch smoothing
+ * - slower pitch-centre tracking to preserve vibrato
+ * - target-note hysteresis + candidate confirmation
+ * - sustained-note Humanize behaviour
+ * - time-based retune speed / transition
+ * - short voiced/unvoiced wet crossfades so consonants are not hard-tuned
+ *
+ * This keeps the existing DigiDAW graph contract while making Pitchy much less
+ * susceptible to one-frame detector mistakes and zippery note transitions.
  */
 export class PitchyNode extends Tone.ToneAudioNode<any> {
   readonly name = 'PitchyNode';
@@ -67,8 +77,15 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
 
   private currentShiftSemitones = 0;
   private stableTargetMidi: number | null = null;
+  private candidateTargetMidi: number | null = null;
+  private candidateTargetFrames = 0;
   private smoothedMidi: number | null = null;
+  private pitchCenterMidi: number | null = null;
+  private previousMeasuredMidi: number | null = null;
   private lastVoicedAt = -Infinity;
+  private noteStartedAt = -Infinity;
+  private lastAnalysisAt = -Infinity;
+  private wetVoiceState = true;
 
   constructor(options: PitchyOptions = {}) {
     super();
@@ -83,7 +100,7 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
     this.pitchShift = new Tone.PitchShift({
       context: this.context,
       pitch: 0,
-      windowSize: 0.04,
+      windowSize: 0.05,
       delayTime: 0,
       feedback: 0,
       wet: 1,
@@ -100,7 +117,7 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
     this.inputNode.chain(this.pitchShift, this.colorFilter, this.outputNode);
 
     // A longer capture window makes low male fundamentals considerably more
-    // stable while the actual YIN pass still runs on a downsampled copy.
+    // stable while the YIN pass itself still operates on a decimated copy.
     this.analyser = this.rawCtx.createAnalyser();
     this.analyser.fftSize = 4096;
     this.analyser.smoothingTimeConstant = 0;
@@ -135,9 +152,9 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
       this.colorFilter.frequency.value = 1400 + (this.color / 100) * 3600;
     }
 
-    // Keep the grain window inside the range where Tone.PitchShift behaves
-    // predictably for voice while giving HQ mode a little more stability.
-    this.pitchShift.windowSize = this.mode === 'hq' ? 0.07 : 0.04;
+    // Tone.PitchShift gets grainier with very small windows. These values trade
+    // a little more latency for a noticeably smoother sustained vocal.
+    this.pitchShift.windowSize = this.mode === 'hq' ? 0.08 : 0.05;
 
     if (previousMode !== this.mode && this.analysisTimer) {
       this.startAnalysis();
@@ -150,23 +167,117 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
       this.analysisTimer = null;
     }
 
-    const intervalMs = this.mode === 'hq' ? 36 : 30;
+    // Faster control updates improve retune smoothness. The expensive YIN loop
+    // remains downsampled so this stays practical for browser playback.
+    const intervalMs = this.mode === 'hq' ? 32 : 24;
     this.analysisTimer = setInterval(() => this.analysePitch(), intervalMs);
+  }
+
+  private analysisDeltaSeconds(now: number): number {
+    const fallback = this.mode === 'hq' ? 0.032 : 0.024;
+    if (!Number.isFinite(this.lastAnalysisAt) || this.lastAnalysisAt < 0) {
+      this.lastAnalysisAt = now;
+      return fallback;
+    }
+    const delta = Math.max(0.008, Math.min(0.08, now - this.lastAnalysisAt));
+    this.lastAnalysisAt = now;
+    return delta;
+  }
+
+  private alphaForTimeConstant(deltaSeconds: number, timeConstantSeconds: number): number {
+    const tau = Math.max(0.001, timeConstantSeconds);
+    return Math.max(0, Math.min(1, 1 - Math.exp(-deltaSeconds / tau)));
+  }
+
+  private unwrapOctaveJump(measuredMidi: number): number {
+    const previous = this.previousMeasuredMidi;
+    if (previous === null || !Number.isFinite(previous)) {
+      this.previousMeasuredMidi = measuredMidi;
+      return measuredMidi;
+    }
+
+    let candidate = measuredMidi;
+    while (candidate - previous > 7) candidate -= 12;
+    while (previous - candidate > 7) candidate += 12;
+
+    this.previousMeasuredMidi = candidate;
+    return candidate;
+  }
+
+  private setVoicedWetState(voiced: boolean) {
+    if (this.wetVoiceState === voiced) return;
+    this.wetVoiceState = voiced;
+
+    // The built-in wet control gives a short crossfade around consonants and
+    // breath noise instead of abruptly forcing an old pitch correction onto
+    // unvoiced material. Twelve milliseconds is short enough not to pump.
+    try {
+      this.pitchShift.wet.rampTo(voiced ? 1 : 0, 0.012);
+    } catch {
+      this.pitchShift.wet.value = voiced ? 1 : 0;
+    }
+  }
+
+  private updateStableTarget(centerMidi: number, now: number) {
+    const nearestMidi = Math.round(centerMidi);
+
+    if (this.stableTargetMidi === null) {
+      this.stableTargetMidi = nearestMidi;
+      this.candidateTargetMidi = null;
+      this.candidateTargetFrames = 0;
+      this.noteStartedAt = now;
+      return;
+    }
+
+    if (nearestMidi === this.stableTargetMidi) {
+      this.candidateTargetMidi = null;
+      this.candidateTargetFrames = 0;
+      return;
+    }
+
+    const distanceFromCurrent = Math.abs(centerMidi - this.stableTargetMidi);
+    if (distanceFromCurrent < 0.62) {
+      this.candidateTargetMidi = null;
+      this.candidateTargetFrames = 0;
+      return;
+    }
+
+    // A genuine large interval is allowed through quickly. Boundary crossings
+    // around vibrato or noisy consonants need two consecutive confirmations.
+    if (distanceFromCurrent >= 1.15) {
+      this.stableTargetMidi = nearestMidi;
+      this.candidateTargetMidi = null;
+      this.candidateTargetFrames = 0;
+      this.noteStartedAt = now;
+      return;
+    }
+
+    if (this.candidateTargetMidi === nearestMidi) {
+      this.candidateTargetFrames += 1;
+    } else {
+      this.candidateTargetMidi = nearestMidi;
+      this.candidateTargetFrames = 1;
+    }
+
+    if (this.candidateTargetFrames >= 2) {
+      this.stableTargetMidi = nearestMidi;
+      this.candidateTargetMidi = null;
+      this.candidateTargetFrames = 0;
+      this.noteStartedAt = now;
+    }
   }
 
   private analysePitch() {
     if (this.isDisposedInternal) return;
 
+    const now = this.rawCtx.currentTime;
+    const deltaSeconds = this.analysisDeltaSeconds(now);
+
     this.analyser.getFloatTimeDomainData(this.analysisData);
     const source = this.analysisData;
 
     let mean = 0;
-    let sumSq = 0;
-    for (let i = 0; i < source.length; i++) {
-      const sample = source[i];
-      mean += sample;
-      sumSq += sample * sample;
-    }
+    for (let i = 0; i < source.length; i++) mean += source[i];
     mean /= source.length;
 
     // AC RMS is more useful for voiced detection than raw RMS when a DC offset
@@ -251,9 +362,8 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
       }
     }
 
-    // Some breathy/raspy vocals never cross the strict threshold. In that
-    // situation accept a clear global valley, but reject genuinely ambiguous
-    // frames so the shifter does not jump randomly.
+    // Some breathy/raspy vocals never cross the strict threshold. Accept a
+    // clear global valley, but reject genuinely ambiguous frames.
     if (tauEstimate < 0) {
       let bestTau = minTau;
       let bestValue = yin[minTau];
@@ -297,91 +407,141 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
       return;
     }
 
-    const measuredMidi = 69 + 12 * Math.log2(pitchHz / this.referenceHz);
+    let measuredMidi = 69 + 12 * Math.log2(pitchHz / this.referenceHz);
+    measuredMidi = this.unwrapOctaveJump(measuredMidi);
 
-    // Small pitch smoothing removes one-frame octave/harmonic jitter without
-    // taking away the fast retune behaviour controlled below.
-    const pitchSmoothAlpha = this.mode === 'hq' ? 0.46 : 0.34;
+    // Fast smoothing removes frame-level jitter while retaining musical motion.
+    const fastTau = this.mode === 'hq' ? 0.045 : 0.032;
+    const fastAlpha = this.alphaForTimeConstant(deltaSeconds, fastTau);
     this.smoothedMidi = this.smoothedMidi === null
       ? measuredMidi
-      : this.smoothedMidi + (measuredMidi - this.smoothedMidi) * pitchSmoothAlpha;
+      : this.smoothedMidi + (measuredMidi - this.smoothedMidi) * fastAlpha;
+
+    // A slower centre line separates note centre from vibrato. Correction is
+    // calculated mostly from this centre when Humanize is raised, so the singer
+    // keeps natural oscillation instead of the tuner fighting every vibrato arc.
+    const humanizeNorm = this.humanize / 100;
+    const centerTau = 0.09 + humanizeNorm * 0.09;
+    const centerAlpha = this.alphaForTimeConstant(deltaSeconds, centerTau);
+    this.pitchCenterMidi = this.pitchCenterMidi === null
+      ? this.smoothedMidi
+      : this.pitchCenterMidi + (this.smoothedMidi - this.pitchCenterMidi) * centerAlpha;
 
     const continuousMidi = this.smoothedMidi;
-    const nearestMidi = Math.round(continuousMidi);
+    const centerMidi = this.pitchCenterMidi;
 
-    // Hysteresis around semitone boundaries prevents target-note chatter on
-    // vibrato that sits exactly between two notes.
+    this.updateStableTarget(centerMidi, now);
     if (this.stableTargetMidi === null) {
-      this.stableTargetMidi = nearestMidi;
-    } else if (nearestMidi !== this.stableTargetMidi) {
-      const distanceFromCurrent = Math.abs(continuousMidi - this.stableTargetMidi);
-      if (distanceFromCurrent > 0.58) this.stableTargetMidi = nearestMidi;
+      this.handleUnvoiced(false);
+      return;
     }
 
     const targetMidi = this.stableTargetMidi;
     const targetHz = this.referenceHz * Math.pow(2, (targetMidi - 69) / 12);
-    const rawCorrection = targetMidi - continuousMidi;
     const noteClass = ((targetMidi % 12) + 12) % 12;
+
+    const noteAge = Number.isFinite(this.noteStartedAt) && this.noteStartedAt >= 0
+      ? Math.max(0, now - this.noteStartedAt)
+      : 0;
+    const sustainRamp = Math.max(0, Math.min(1, (noteAge - 0.16) / 0.38));
+
+    // Humanize acts primarily on sustained material: attacks still lock quickly,
+    // while held notes retain more vibrato and small expressive movement.
+    const vibratoDeviation = continuousMidi - centerMidi;
+    const vibratoPreserve = humanizeNorm * (0.35 + sustainRamp * 0.65);
+    const correctionReferenceMidi = centerMidi + vibratoDeviation * (1 - vibratoPreserve);
+    let correction = targetMidi - correctionReferenceMidi;
+
+    // Humanize also supplies a gentle Flex-like soft zone around the note centre.
+    // A singer already close to target is not constantly pulled dead-centre.
+    const flexZone = 0.025 + humanizeNorm * (0.08 + sustainRamp * 0.16);
+    const absCorrection = Math.abs(correction);
+    if (flexZone > 0 && absCorrection < flexZone) {
+      const x = Math.max(0, Math.min(1, absCorrection / flexZone));
+      const smoothStep = x * x * (3 - 2 * x);
+      correction *= smoothStep;
+    }
 
     this.detectedHz = pitchHz;
     this.targetHz = targetHz;
     this.closestNoteName = NOTE_NAMES[noteClass] || 'C';
-    this.centsDeviation = Math.max(-50, Math.min(50, Math.round(rawCorrection * 100)));
+    this.centsDeviation = Math.max(-50, Math.min(50, Math.round((targetMidi - continuousMidi) * 100)));
     this.isTracking = true;
     this.confidence = confidence;
-    this.lastVoicedAt = this.rawCtx.currentTime;
+    this.lastVoicedAt = now;
+    this.setVoicedWetState(true);
 
-    const humanize = this.humanize / 100;
-    let correction = rawCorrection;
-
-    // Humanize preserves small natural movement around the centre of the note
-    // while larger intonation errors still get pulled to target.
-    const softZone = 0.04 + humanize * 0.18;
-    const absCorrection = Math.abs(correction);
-    if (absCorrection < softZone && softZone > 0) {
-      const amount = absCorrection / softZone;
-      const preserve = humanize * (1 - amount);
-      correction *= 1 - preserve * 0.92;
-    } else {
-      correction *= 1 - humanize * 0.18;
-    }
-
-    this.applyPitchShift(correction);
+    this.applyPitchShift(correction, deltaSeconds, noteAge, confidence);
   }
 
   private handleUnvoiced(resetFrequency: boolean) {
+    const now = this.rawCtx.currentTime;
     this.isTracking = false;
+
     if (resetFrequency) {
       this.detectedHz = 0;
       this.targetHz = 0;
     }
 
-    // Hold the last correction across short consonants/breath gaps. Releasing
-    // instantly on every unvoiced frame is what makes many browser autotunes
-    // sound like the effect repeatedly switches on and off.
-    const elapsed = this.rawCtx.currentTime - this.lastVoicedAt;
-    if (elapsed < 0.16) return;
+    const elapsed = now - this.lastVoicedAt;
+
+    // Tiny consonant gaps keep the previous correction; this avoids rapidly
+    // toggling the shifter during normal syllables. Longer unvoiced regions are
+    // crossfaded to the internal dry path to avoid pitch-shifting sibilance.
+    if (elapsed < 0.065) return;
+    this.setVoicedWetState(false);
+
+    if (elapsed < 0.18) return;
 
     this.stableTargetMidi = null;
+    this.candidateTargetMidi = null;
+    this.candidateTargetFrames = 0;
     this.smoothedMidi = null;
+    this.pitchCenterMidi = null;
+    this.previousMeasuredMidi = null;
+    this.noteStartedAt = -Infinity;
     this.centsDeviation = Math.round(this.centsDeviation * 0.7);
-    this.applyPitchShift(0);
+
+    const deltaSeconds = this.analysisDeltaSeconds(now);
+    this.applyPitchShift(0, deltaSeconds, 0, 0.5);
   }
 
-  private applyPitchShift(targetSemitones: number) {
+  private applyPitchShift(
+    targetSemitones: number,
+    deltaSeconds: number,
+    noteAgeSeconds: number,
+    confidence: number,
+  ) {
     const speedNorm = this.speed / 100;
     const transitionNorm = this.transition / 100;
+    const humanizeNorm = this.humanize / 100;
 
-    // Speed controls how quickly we reach the correction; Transition adds an
-    // additional glide. Correction strength itself is not thrown away at low
-    // speed, which is closer to how a retune-speed control is expected to feel.
-    let alpha = 0.08 + Math.pow(speedNorm, 1.45) * 0.84;
-    alpha *= 1 - transitionNorm * 0.72;
-    alpha = Math.max(0.025, Math.min(0.94, alpha));
+    // Convert the UI control to a real retune time. Speed 100 is near-instant;
+    // Speed 0 is deliberately slow. Transition adds glide without changing the
+    // final correction amount.
+    let retuneMs = 3 + Math.pow(1 - speedNorm, 2.1) * 157;
+    retuneMs += transitionNorm * 130;
 
+    // Humanize only slows sustained notes. New note attacks remain responsive.
+    const sustainRamp = Math.max(0, Math.min(1, (noteAgeSeconds - 0.16) / 0.38));
+    retuneMs += humanizeNorm * sustainRamp * 240;
+
+    // Ambiguous frames should move the correction more cautiously rather than
+    // yanking the shifter toward a possibly wrong harmonic.
+    if (confidence < 0.75) {
+      const confidencePenalty = (0.75 - confidence) / 0.20;
+      retuneMs += Math.max(0, Math.min(1, confidencePenalty)) * 90;
+    }
+
+    const alpha = this.alphaForTimeConstant(deltaSeconds, Math.max(0.003, retuneMs / 1000));
     const clampedTarget = Math.max(-2, Math.min(2, targetSemitones));
+
     this.currentShiftSemitones += (clampedTarget - this.currentShiftSemitones) * alpha;
-    if (Math.abs(this.currentShiftSemitones) < 0.0015) this.currentShiftSemitones = 0;
+
+    // Sub-cent resolution is enough for tuning while avoiding tiny control-rate
+    // fluctuations that only create zipper/warble in the pitch shifter.
+    this.currentShiftSemitones = Math.round(this.currentShiftSemitones * 200) / 200;
+    if (Math.abs(this.currentShiftSemitones) < 0.0025) this.currentShiftSemitones = 0;
 
     this.pitchShift.pitch = this.currentShiftSemitones;
   }
