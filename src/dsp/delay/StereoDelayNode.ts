@@ -18,6 +18,17 @@ export interface StereoDelayParams {
 const BEAT_FACTORS = [0.125, 0.25, 0.5, 1, 2, 4];
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
+function forceStereo(node: any) {
+  if (!node) return;
+  const candidates = [node, node.input, node.output, node._gainNode];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try { if ('channelCount' in candidate) candidate.channelCount = 2; } catch {}
+    try { if ('channelCountMode' in candidate) candidate.channelCountMode = 'explicit'; } catch {}
+    try { if ('channelInterpretation' in candidate) candidate.channelInterpretation = 'speakers'; } catch {}
+  }
+}
+
 export class StereoDelayNode extends Tone.ToneAudioNode<any> {
   readonly name = 'StereoDelayNode';
   public readonly input: Tone.Gain;
@@ -33,6 +44,10 @@ export class StereoDelayNode extends Tone.ToneAudioNode<any> {
   private drive: WaveShaperNode;
   private splitter: ChannelSplitterNode;
   private merger: ChannelMergerNode;
+  private standardInL: GainNode;
+  private standardInR: GainNode;
+  private pingInFromL: GainNode;
+  private pingInFromR: GainNode;
   private delayL: DelayNode;
   private delayR: DelayNode;
   private feedbackLL: GainNode;
@@ -64,6 +79,10 @@ export class StereoDelayNode extends Tone.ToneAudioNode<any> {
     this.drive = raw.createWaveShaper(); this.drive.oversample = '4x';
     this.splitter = raw.createChannelSplitter(2);
     this.merger = raw.createChannelMerger(2);
+    this.standardInL = raw.createGain();
+    this.standardInR = raw.createGain();
+    this.pingInFromL = raw.createGain();
+    this.pingInFromR = raw.createGain();
     this.delayL = raw.createDelay(2.2);
     this.delayR = raw.createDelay(2.2);
     this.feedbackLL = raw.createGain();
@@ -77,18 +96,40 @@ export class StereoDelayNode extends Tone.ToneAudioNode<any> {
     this.lfoDepthL = raw.createGain();
     this.lfoDepthR = raw.createGain();
 
+    forceStereo(this.inputNode);
+    forceStereo(this.outputNode);
+    [this.dryGain, this.wetInput, this.lowCut, this.tone, this.drive, this.wetGain, this.outputGain].forEach(forceStereo);
+
     const nativeInput = this.inputNode.input as AudioNode;
     const nativeOutput = this.outputNode.input as AudioNode;
+    forceStereo(nativeInput);
+    forceStereo(nativeOutput);
 
+    // Dry path never enters the Color/wobble processing.
     nativeInput.connect(this.dryGain);
     this.dryGain.connect(this.outputGain);
+
+    // Wet-only Color path.
     nativeInput.connect(this.wetInput);
     this.wetInput.connect(this.lowCut);
     this.lowCut.connect(this.tone);
     this.tone.connect(this.drive);
     this.drive.connect(this.splitter);
-    this.splitter.connect(this.delayL, 0);
-    this.splitter.connect(this.delayR, 1);
+
+    // Standard mode preserves left/right injection. Ping-pong mode folds the
+    // incoming stereo pair to the first (left) tap at unity-equivalent gain,
+    // then the cross-feedback network alternates L -> R -> L -> R. This also
+    // makes a mono source produce a real stereo ping-pong instead of an empty
+    // right input or two identical centered taps.
+    this.splitter.connect(this.standardInL, 0);
+    this.standardInL.connect(this.delayL);
+    this.splitter.connect(this.standardInR, 1);
+    this.standardInR.connect(this.delayR);
+    this.splitter.connect(this.pingInFromL, 0);
+    this.pingInFromL.connect(this.delayL);
+    this.splitter.connect(this.pingInFromR, 1);
+    this.pingInFromR.connect(this.delayL);
+
     this.delayL.connect(this.merger, 0, 0);
     this.delayR.connect(this.merger, 0, 1);
     this.merger.connect(this.wetGain);
@@ -161,6 +202,14 @@ export class StereoDelayNode extends Tone.ToneAudioNode<any> {
 
     const fb = clamp((p.feedback ?? 40) / 100, 0, 0.94);
     const ping = (p.pingPong ?? 0) === 1;
+
+    // Crossfade the input topology as well as the feedback topology. Using 0.5
+    // per source when folding a duplicated mono signal avoids a +6 dB build-up.
+    set(this.standardInL.gain, ping ? 0 : 1);
+    set(this.standardInR.gain, ping ? 0 : 1);
+    set(this.pingInFromL.gain, ping ? 0.5 : 0);
+    set(this.pingInFromR.gain, ping ? 0.5 : 0);
+
     set(this.feedbackLL.gain, ping ? 0 : fb);
     set(this.feedbackRR.gain, ping ? 0 : fb);
     set(this.feedbackLR.gain, ping ? fb : 0);
@@ -172,7 +221,14 @@ export class StereoDelayNode extends Tone.ToneAudioNode<any> {
     this.disposedInternal = true;
     try { this.lfoL.stop(); } catch {}
     try { this.lfoR.stop(); } catch {}
-    const nodes: AudioNode[] = [this.dryGain, this.wetInput, this.lowCut, this.tone, this.drive, this.splitter, this.merger, this.delayL, this.delayR, this.feedbackLL, this.feedbackRR, this.feedbackLR, this.feedbackRL, this.wetGain, this.outputGain, this.lfoL, this.lfoR, this.lfoDepthL, this.lfoDepthR];
+    const nodes: AudioNode[] = [
+      this.dryGain, this.wetInput, this.lowCut, this.tone, this.drive,
+      this.splitter, this.merger, this.standardInL, this.standardInR,
+      this.pingInFromL, this.pingInFromR, this.delayL, this.delayR,
+      this.feedbackLL, this.feedbackRR, this.feedbackLR, this.feedbackRL,
+      this.wetGain, this.outputGain, this.lfoL, this.lfoR,
+      this.lfoDepthL, this.lfoDepthR,
+    ];
     nodes.forEach(n => { try { n.disconnect(); } catch {} });
     super.dispose();
     return this;
