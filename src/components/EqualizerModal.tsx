@@ -211,7 +211,6 @@ export function EqualizerModal({
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
       }
 
-      // RTA: use the actual context sample rate instead of a hard-coded 44.1k Nyquist.
       if (analyser?.fft && isPlaying) {
         try {
           const fft = analyser.fft.getValue();
@@ -228,8 +227,8 @@ export function EqualizerModal({
             }
             ctx.lineTo(w, h); ctx.closePath();
             const gradient = ctx.createLinearGradient(0, 0, 0, h);
-            gradient.addColorStop(0, 'rgba(244,114,182,0.24)');
-            gradient.addColorStop(1, 'rgba(192,132,252,0)');
+            gradient.addColorStop(0, 'rgba(56,189,248,0.24)');
+            gradient.addColorStop(1, 'rgba(96,165,250,0)');
             ctx.fillStyle = gradient; ctx.fill();
           }
         } catch {}
@@ -257,9 +256,9 @@ export function EqualizerModal({
         const y = dbToY(db, h);
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      ctx.strokeStyle = isBypassed ? '#666' : '#e879f9';
+      ctx.strokeStyle = isBypassed ? '#666' : '#38bdf8';
       ctx.lineWidth = 2;
-      ctx.shadowColor = isBypassed ? 'transparent' : 'rgba(232,121,249,0.55)';
+      ctx.shadowColor = isBypassed ? 'transparent' : 'rgba(56,189,248,0.55)';
       ctx.shadowBlur = isBypassed ? 0 : 6;
       ctx.stroke(); ctx.shadowBlur = 0;
 
@@ -353,12 +352,12 @@ export function EqualizerModal({
       <div className="p-3 bg-[#18181e]">
         <div className="flex items-center justify-between pb-2 border-b border-[#292934]">
           <div className="flex gap-1.5">{bands.map((band) => <button key={band.id} type="button" onClick={() => setActiveBandId(band.id)} className={cn('px-3 py-1 rounded-full text-[10px] font-black border flex items-center gap-1.5', activeBandId === band.id ? 'bg-[#282834] text-white border-[#e879f9]/60' : 'bg-[#111114] text-[#777] border-[#2d2d38]')}><span className="w-2 h-2 rounded-full" style={{ backgroundColor: band.bypass ? '#555' : band.color }} />B{band.id}</button>)}</div>
-          <button type="button" onClick={() => updateBand(activeBand.id, { bypass: !activeBand.bypass })} className={cn('px-3 h-7 rounded-full text-[9px] font-black border', !activeBand.bypass ? 'border-[#f472b6] bg-[#f472b6]/15 text-[#f472b6]' : 'border-[#383842] bg-[#111114] text-[#666]')}>BAND {activeBand.bypass ? 'OFF' : 'ON'}</button>
+          <button type="button" onClick={() => updateBand(activeBand.id, { bypass: !activeBand.bypass })} className={cn('px-3 h-7 rounded-full text-[9px] font-black border', !activeBand.bypass ? 'border-[#f472b6] bg-[#f472b6]/15 text-[#f472b6]' : 'border-[#383842] bg-[#111114] text-[#666]')}>Band {activeBand.bypass ? 'off' : 'on'}</button>
         </div>
 
         <div className="pt-3 flex items-center gap-5">
           <div className="w-[210px]">
-            <div className="text-[8px] text-[#666] font-black tracking-widest mb-1.5">FILTER SHAPE</div>
+            <div className="text-[8px] text-[#666] font-black tracking-widest mb-1.5">Filter shape</div>
             <div className="grid grid-cols-5 gap-1">{FILTER_TYPES.map((type) => <button key={type.id} type="button" title={type.label} onClick={() => updateBand(activeBand.id, { type: type.id, gain: type.id === 'highpass' || type.id === 'lowpass' ? 0 : activeBand.gain })} className={cn('h-8 rounded text-[8px] font-black border', activeBand.type === type.id ? 'bg-gradient-to-r from-[#f472b6] to-[#e879f9] text-black border-[#f472b6]' : 'bg-[#111114] text-[#777] border-[#33333d]')}>{type.short}</button>)}</div>
           </div>
           <div className="w-px h-20 bg-[#292934]" />
