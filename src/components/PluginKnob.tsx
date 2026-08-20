@@ -27,12 +27,17 @@ const SIZE_MAP: Record<PluginKnobSize, number> = {
   xl: 88,
 };
 
+function sentenceCase(text?: string) {
+  if (!text) return '';
+  if (!/[A-Za-z]/.test(text)) return text;
+  return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+}
+
 /**
  * Shared DigiDAW plugin knob.
  *
- * This is the Pitchy dial language used across the whole plugin suite:
- * dark circular cap, pink/purple glowing progress arc, indicator dot,
- * vertical drag (Shift = fine), mouse wheel and double-click reset.
+ * Geometry, interaction and spacing stay identical to the Pitchy dial language.
+ * Only the accent colors are inherited from the currently opened plugin theme.
  */
 export function PluginKnob({
   label,
@@ -65,6 +70,8 @@ export function PluginKnob({
   const innerRadius = 27 * scale;
   const needleDistance = 23 * scale;
   const needleRadius = Math.max(1.6, 2.2 * scale);
+  const accent = 'var(--plugin-accent, #f472b6)';
+  const accent2 = 'var(--plugin-accent-2, #c084fc)';
 
   const clampAndStep = (rawValue: number) => {
     let next = Math.max(min, Math.min(max, rawValue));
@@ -165,15 +172,15 @@ export function PluginKnob({
       onMouseDown={handleMouseDown}
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
-      title={`${label}: ${displayValue ?? value}`}
+      title={`${sentenceCase(label)}: ${displayValue ?? value}`}
     >
       <div className="relative flex items-center justify-center" style={{ width: dimension, height: dimension }}>
         <svg width={dimension} height={dimension} className="transform -rotate-90 overflow-visible">
           <defs>
             <linearGradient id={arcGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#f472b6" />
-              <stop offset="50%" stopColor="#e879f9" />
-              <stop offset="100%" stopColor="#c084fc" />
+              <stop offset="0%" stopColor={accent} />
+              <stop offset="50%" stopColor={accent} />
+              <stop offset="100%" stopColor={accent2} />
             </linearGradient>
             <linearGradient id={dialGradientId} x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#1e1e24" />
@@ -196,7 +203,7 @@ export function PluginKnob({
               stroke={`url(#${arcGradientId})`}
               strokeWidth={strokeWidth}
               strokeLinecap="round"
-              className="filter drop-shadow-[0_0_6px_rgba(244,114,182,0.6)]"
+              style={{ filter: `drop-shadow(0 0 5px ${accent})` }}
             />
           )}
 
@@ -213,29 +220,29 @@ export function PluginKnob({
             cx={needleX}
             cy={needleY}
             r={needleRadius}
-            fill="#f9a8d4"
-            className="filter drop-shadow-[0_0_4px_rgba(244,114,182,0.9)]"
+            fill={accent}
+            style={{ filter: `drop-shadow(0 0 4px ${accent})` }}
           />
         </svg>
       </div>
 
       <div className="w-full flex items-center justify-between px-1 text-[8px] tracking-wider text-[#73737c] font-bold mt-0.5 gap-2">
-        <span className="truncate">{leftSubLabel}</span>
-        <span className="truncate text-right">{rightSubLabel}</span>
+        <span className="truncate">{sentenceCase(leftSubLabel)}</span>
+        <span className="truncate text-right">{sentenceCase(rightSubLabel)}</span>
       </div>
 
-      <span className="text-[#f1f1f4] text-[10px] font-extrabold tracking-widest uppercase mt-0.5 text-center leading-tight">
-        {label}
+      <span className="text-[#f1f1f4] text-[10px] font-extrabold tracking-widest mt-0.5 text-center leading-tight">
+        {sentenceCase(label)}
       </span>
 
       {detail && (
         <span className="text-[#73737c] text-[8px] font-mono mt-0.5 text-center leading-none">
-          {detail}
+          {sentenceCase(detail)}
         </span>
       )}
 
       {displayValue && (
-        <span className="text-[#e9d5ff] text-[9.5px] font-mono font-bold mt-1 text-center tabular-nums">
+        <span className="text-[9.5px] font-mono font-bold mt-1 text-center tabular-nums" style={{ color: accent2 }}>
           {displayValue}
         </span>
       )}
