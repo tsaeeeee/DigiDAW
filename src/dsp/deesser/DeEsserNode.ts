@@ -57,7 +57,7 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
     this.input = this.inputNode;
     this.output = this.outputNode;
 
-    // Worklet module loading is asynchronous. Pass clean audio until the DSP is
+    // AudioWorklet loading is asynchronous. Pass clean audio until the DSP is
     // ready, then crossfade once into the latency-stable processed path.
     this.dryGain = new Tone.Gain({ context: this.context, gain: 1 });
     this.processedGain = new Tone.Gain({ context: this.context, gain: 0 });
@@ -202,10 +202,10 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
   }
 
   /**
-   * Fallback uses the same LR4 topology with two cascaded Butterworth biquads at
-   * each crossover. The native compressor branch has browser-defined internal
-   * latency, so this remains a compatibility fallback rather than the preferred
-   * path; supported browsers should use the sample-aligned AudioWorklet.
+   * Compatibility path only. It mirrors the phase-compensated LR4 topology of
+   * the worklet, then uses a native DynamicsCompressorNode for the selected band.
+   * Supported browsers should stay on the AudioWorklet because it avoids native
+   * compressor lookahead ambiguity and supports the true Wide mode.
    */
   private buildNativeFallback() {
     const raw = this.raw;
@@ -218,10 +218,19 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
       return filter;
     };
 
+    // First crossover: low / upper.
     const lowLp1 = makeFilter('lowpass');
     const lowLp2 = makeFilter('lowpass');
     const upperHp1 = makeFilter('highpass');
     const upperHp2 = makeFilter('highpass');
+
+    // High-crossover all-pass phase compensation on the low branch.
+    const lowPhaseLp1 = makeFilter('lowpass');
+    const lowPhaseLp2 = makeFilter('lowpass');
+    const lowPhaseHp1 = makeFilter('highpass');
+    const lowPhaseHp2 = makeFilter('highpass');
+
+    // Second crossover: selected sibilance band / high band.
     const sibLp1 = makeFilter('lowpass');
     const sibLp2 = makeFilter('lowpass');
     const highHp1 = makeFilter('highpass');
@@ -234,8 +243,7 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
     const lowDelay = raw.createDelay(0.02);
     const highDelay = raw.createDelay(0.02);
 
-    // Chromium's compressor uses lookahead internally. A small matching delay
-    // keeps the compatibility branches closer in time than the old topology.
+    // Approximate native compressor lookahead in the compatibility path only.
     lowDelay.delayTime.value = 0.006;
     highDelay.delayTime.value = 0.006;
 
@@ -250,7 +258,12 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
 
     nativeInput.connect(lowLp1);
     lowLp1.connect(lowLp2);
-    lowLp2.connect(lowDelay);
+    lowLp2.connect(lowPhaseLp1);
+    lowPhaseLp1.connect(lowPhaseLp2);
+    lowPhaseLp2.connect(lowDelay);
+    lowLp2.connect(lowPhaseHp1);
+    lowPhaseHp1.connect(lowPhaseHp2);
+    lowPhaseHp2.connect(lowDelay);
     lowDelay.connect(lowGain);
     lowGain.connect(nativeProcessed);
 
@@ -271,12 +284,38 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
   }
 
   private applyNativeFallbackParams(_immediate: boolean) {
-    if (!this.fallbackCompressor || this.fallbackFilters.length < 8) return;
+    if (!this.fallbackCompressor || this.fallbackFilters.length < 12) return;
     const p = this.normalizedParams();
-    const [lowLp1, lowLp2, upperHp1, upperHp2, sibLp1, sibLp2, highHp1, highHp2] = this.fallbackFilters;
+    const [
+      lowLp1,
+      lowLp2,
+      upperHp1,
+      upperHp2,
+      lowPhaseLp1,
+      lowPhaseLp2,
+      lowPhaseHp1,
+      lowPhaseHp2,
+      sibLp1,
+      sibLp2,
+      highHp1,
+      highHp2,
+    ] = this.fallbackFilters;
 
-    [lowLp1, lowLp2, upperHp1, upperHp2].forEach((filter) => { filter.frequency.value = p.lowFreq; });
-    [sibLp1, sibLp2, highHp1, highHp2].forEach((filter) => { filter.frequency.value = p.highFreq; });
+    [lowLp1, lowLp2, upperHp1, upperHp2].forEach((filter) => {
+      filter.frequency.value = p.lowFreq;
+    });
+    [
+      lowPhaseLp1,
+      lowPhaseLp2,
+      lowPhaseHp1,
+      lowPhaseHp2,
+      sibLp1,
+      sibLp2,
+      highHp1,
+      highHp2,
+    ].forEach((filter) => {
+      filter.frequency.value = p.highFreq;
+    });
 
     this.fallbackCompressor.threshold.value = p.threshold;
     this.fallbackCompressor.knee.value = 6;
