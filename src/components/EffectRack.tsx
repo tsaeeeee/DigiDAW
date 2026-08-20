@@ -11,7 +11,10 @@ import { SaturatorModal } from './SaturatorModal';
 import { PitchyModal } from './PitchyModal';
 import { DeEsserModal } from './DeEsserModal';
 
-const SLOTS = 5;
+const SLOTS = 7;
+let globalPluginZ = 310;
+const nextPluginZ = () => ++globalPluginZ;
+
 export const DEDICATED_EFFECTS: { type: EffectType; name: string; shortCode: string; color: string; desc: string }[] = [
   { type: 'Compressor', name: 'Dikompres', shortCode: 'COMP', color: '#fb923c', desc: 'Dynamic range control' },
   { type: 'EQ', name: 'Diequ', shortCode: 'EQ', color: '#38bdf8', desc: 'Five-band equalizer' },
@@ -42,23 +45,53 @@ interface Props {
   isPlaying?: boolean;
 }
 
+interface OpenPluginWindow {
+  index: number;
+  type: EffectType;
+  zIndex: number;
+}
+
 export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }: Props) {
   const [picker, setPicker] = useState<number | null>(null);
-  const [open, setOpen] = useState<{ type: EffectType; index: number } | null>(null);
-  const [z, setZ] = useState(310);
-  const zRef = useRef(310);
-  const front = () => { zRef.current += 1; setZ(zRef.current); };
+  const [openWindows, setOpenWindows] = useState<OpenPluginWindow[]>([]);
+  const lastFocusedSlot = useRef<number | null>(null);
   const slots = Array.from({ length: SLOTS }, (_, i) => effects[i] || { id: `slot-${i}`, type: null, bypassed: false });
-  const openSlot = (index: number, slot: EffectSlot) => { if (slot.type) { setOpen({ type: slot.type, index }); front(); } else setPicker(index); };
-  const modalProps = (type: EffectType) => ({
-    slot: slots[open!.index],
-    slotIndex: open!.index,
+
+  const focusWindow = (index: number) => {
+    const zIndex = nextPluginZ();
+    lastFocusedSlot.current = index;
+    setOpenWindows((previous) => previous.map((window) => window.index === index ? { ...window, zIndex } : window));
+  };
+
+  const openPluginWindow = (index: number, type: EffectType) => {
+    const zIndex = nextPluginZ();
+    lastFocusedSlot.current = index;
+    setOpenWindows((previous) => {
+      const existing = previous.find((window) => window.index === index);
+      if (existing) return previous.map((window) => window.index === index ? { index, type, zIndex } : window);
+      return [...previous, { index, type, zIndex }];
+    });
+  };
+
+  const closePluginWindow = (index: number) => {
+    setOpenWindows((previous) => previous.filter((window) => window.index !== index));
+    if (lastFocusedSlot.current === index) lastFocusedSlot.current = null;
+  };
+
+  const openSlot = (index: number, slot: EffectSlot) => {
+    if (slot.type) openPluginWindow(index, slot.type);
+    else setPicker(index);
+  };
+
+  const modalProps = (window: OpenPluginWindow) => ({
+    slot: slots[window.index],
+    slotIndex: window.index,
     analyser,
     isPlaying,
-    onUpdateParams: (i: number, b: boolean, p: Record<string, number>) => onUpdateEffect(i, type, b, p),
-    onClose: () => setOpen(null),
-    zIndex: z,
-    onFocus: front,
+    onUpdateParams: (i: number, b: boolean, p: Record<string, number>) => onUpdateEffect(i, window.type, b, p),
+    onClose: () => closePluginWindow(window.index),
+    zIndex: window.zIndex,
+    onFocus: () => focusWindow(window.index),
   });
 
   const themeStyle = (type: EffectType) => {
@@ -71,31 +104,36 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
   };
 
   const themeClass = (type: EffectType) => `plugin-title-patch plugin-themed plugin-theme-${type.toLowerCase()}`;
+  const validWindows = openWindows.filter((window) => slots[window.index]?.type === window.type);
 
   return <div className="w-full flex flex-col gap-1 my-1 relative">
     <div className="w-full bg-[#111113] border border-black rounded p-0.5 flex flex-col gap-0.5 shadow-inner max-h-[83px] overflow-y-auto custom-scrollbar">
       {slots.map((slot, i) => {
         const meta = slot.type ? DEDICATED_EFFECTS.find(x => x.type === slot.type) : null;
         const bypass = !!slot.bypassed;
-        return <div key={slot.id || i} onClick={() => openSlot(i, slot)} className={cn('h-[18px] rounded-[2px] border text-[8px] flex items-center justify-between px-1 cursor-pointer', meta ? 'bg-[#1e1f26] border-[#3a3d4a] text-white' : 'bg-[#151517] border-[#222226] text-[#555]')}>
+        return <div key={slot.id || i} onClick={() => openSlot(i, slot)} className={cn('h-[18px] shrink-0 rounded-[2px] border text-[8px] flex items-center justify-between px-1 cursor-pointer', meta ? 'bg-[#1e1f26] border-[#3a3d4a] text-white' : 'bg-[#151517] border-[#222226] text-[#555]')}>
           <div className="flex items-center gap-1 min-w-0">{meta ? <><span className="px-1 rounded-[1px] text-[7px] font-black text-black" style={{ backgroundColor: bypass ? '#444' : meta.color }}>{meta.shortCode}</span><span className={cn('truncate font-medium', bypass && 'line-through opacity-50')}>{meta.name}</span></> : <span className="italic">Insert fx</span>}</div>
-          {meta && <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}><button onClick={() => onUpdateEffect(i, slot.type, !bypass, slot.params)} className="p-0.5" style={{ color: bypass ? '#666' : meta.color }}><Power className="w-2 h-2" /></button><button onClick={() => { if (open?.index === i) setOpen(null); onUpdateEffect(i, null, false); }} className="p-0.5 text-[#666] hover:text-red-400"><X className="w-2 h-2" /></button></div>}
+          {meta && <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}><button onClick={() => onUpdateEffect(i, slot.type, !bypass, slot.params)} className="p-0.5" style={{ color: bypass ? '#666' : meta.color }}><Power className="w-2 h-2" /></button><button onClick={() => { closePluginWindow(i); onUpdateEffect(i, null, false); }} className="p-0.5 text-[#666] hover:text-red-400"><X className="w-2 h-2" /></button></div>}
         </div>;
       })}
     </div>
 
-    {picker !== null && <div className="absolute top-[86px] left-0 z-[420] w-60 rounded-lg border border-[#34343d] bg-[#17171d] p-2 shadow-2xl">
-      <div className="text-[9px] text-[#777] px-1 pb-1.5">Choose effect</div>
-      {DEDICATED_EFFECTS.map(meta => <button key={meta.type} onClick={() => { onUpdateEffect(picker, meta.type, false); setOpen({ type: meta.type, index: picker }); setPicker(null); front(); }} className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#282832] text-left"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta.color }} /><div><div className="text-[10px] text-white font-bold">{meta.name}</div><div className="text-[8px] text-[#666]">{meta.desc}</div></div></button>)}
+    {picker !== null && <div className="absolute top-[86px] left-0 z-[420] w-44 rounded-md border border-[#34343d] bg-[#17171d] p-1.5 shadow-2xl">
+      {DEDICATED_EFFECTS.map(meta => <button key={meta.type} onClick={() => { onUpdateEffect(picker, meta.type, false); openPluginWindow(picker, meta.type); setPicker(null); }} className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-[#282832] text-left"><span className="min-w-[38px] px-1 py-0.5 rounded-[2px] text-center text-[7px] font-black text-black" style={{ backgroundColor: meta.color }}>{meta.shortCode}</span><span className="text-[9px] text-white font-bold truncate">{meta.name}</span></button>)}
     </div>}
 
-    {open?.type === 'Compressor' && <div className={themeClass('Compressor')} style={themeStyle('Compressor')}><CompressorModal {...modalProps('Compressor')} /></div>}
-    {open?.type === 'EQ' && <div className={themeClass('EQ')} style={themeStyle('EQ')}><EqualizerModal {...modalProps('EQ')} /></div>}
-    {open?.type === 'Pitchy' && <div className={themeClass('Pitchy')} style={themeStyle('Pitchy')}><PitchyModal {...modalProps('Pitchy')} /></div>}
-    {open?.type === 'Reverb' && <div className={themeClass('Reverb')} style={themeStyle('Reverb')}><ReverbModal {...modalProps('Reverb')} /></div>}
-    {open?.type === 'Delay' && <div className={themeClass('Delay')} style={themeStyle('Delay')}><DelayModal {...modalProps('Delay')} /></div>}
-    {open?.type === 'Limiter' && <div className={themeClass('Limiter')} style={themeStyle('Limiter')}><BrickwallLimiterModal {...modalProps('Limiter')} /></div>}
-    {open?.type === 'Saturator' && <div className={themeClass('Saturator')} style={themeStyle('Saturator')}><SaturatorModal {...modalProps('Saturator')} /></div>}
-    {open?.type === 'DeEsser' && <div className={themeClass('DeEsser')} style={themeStyle('DeEsser')}><DeEsserModal {...modalProps('DeEsser')} /></div>}
+    {validWindows.map((window) => {
+      const props = modalProps(window);
+      return <div key={`${window.index}-${window.type}`} className={themeClass(window.type)} style={themeStyle(window.type)}>
+        {window.type === 'Compressor' && <CompressorModal {...props} />}
+        {window.type === 'EQ' && <EqualizerModal {...props} />}
+        {window.type === 'Pitchy' && <PitchyModal {...props} />}
+        {window.type === 'Reverb' && <ReverbModal {...props} />}
+        {window.type === 'Delay' && <DelayModal {...props} />}
+        {window.type === 'Limiter' && <BrickwallLimiterModal {...props} />}
+        {window.type === 'Saturator' && <SaturatorModal {...props} />}
+        {window.type === 'DeEsser' && <DeEsserModal {...props} />}
+      </div>;
+    })}
   </div>;
 }
