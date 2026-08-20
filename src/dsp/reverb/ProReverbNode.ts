@@ -9,10 +9,12 @@ export interface ReverbTelemetry {
   isProcessing: boolean;
 }
 
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
 export class ProReverbNode extends Tone.ToneAudioNode<any> {
   readonly name = 'ProReverbNode';
   public static lastActiveInstance: ProReverbNode | null = null;
-  public static instances: Set<ProReverbNode> = new Set();
+  public static instances = new Set<ProReverbNode>();
 
   public readonly input: Tone.Gain;
   public readonly output: Tone.Gain;
@@ -29,6 +31,12 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
   private bassShelf: BiquadFilterNode;
   private dampingFilter: BiquadFilterNode;
   private convolver: ConvolverNode;
+  private splitter: ChannelSplitterNode;
+  private merger: ChannelMergerNode;
+  private ll: GainNode;
+  private lr: GainNode;
+  private rl: GainNode;
+  private rr: GainNode;
   private inputAnalyser: AnalyserNode;
   private wetAnalyser: AnalyserNode;
   private outputAnalyser: AnalyserNode;
@@ -36,7 +44,7 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
   private wetMeterData: Float32Array;
   private outputMeterData: Float32Array;
   private rebuildTimer: ReturnType<typeof setTimeout> | null = null;
-  private isDisposedInternal = false;
+  private disposedInternal = false;
 
   constructor(context?: BaseAudioContext, initialParams: Partial<ReverbParams> = {}) {
     super();
@@ -51,31 +59,26 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
     this.dryGain = raw.createGain();
     this.wetGain = raw.createGain();
     this.preDelay = raw.createDelay(0.3);
-    this.lowCut = raw.createBiquadFilter();
-    this.highCut = raw.createBiquadFilter();
-    this.bassShelf = raw.createBiquadFilter();
-    this.dampingFilter = raw.createBiquadFilter();
-    this.convolver = raw.createConvolver();
-    this.lowCut.type = 'highpass';
-    this.highCut.type = 'lowpass';
-    this.bassShelf.type = 'lowshelf';
-    this.dampingFilter.type = 'lowpass';
-    this.convolver.normalize = true;
+    this.lowCut = raw.createBiquadFilter(); this.lowCut.type = 'highpass';
+    this.highCut = raw.createBiquadFilter(); this.highCut.type = 'lowpass';
+    this.bassShelf = raw.createBiquadFilter(); this.bassShelf.type = 'lowshelf';
+    this.dampingFilter = raw.createBiquadFilter(); this.dampingFilter.type = 'lowpass';
+    this.convolver = raw.createConvolver(); this.convolver.normalize = true;
+    this.splitter = raw.createChannelSplitter(2);
+    this.merger = raw.createChannelMerger(2);
+    this.ll = raw.createGain(); this.lr = raw.createGain(); this.rl = raw.createGain(); this.rr = raw.createGain();
 
-    this.inputAnalyser = raw.createAnalyser();
-    this.wetAnalyser = raw.createAnalyser();
-    this.outputAnalyser = raw.createAnalyser();
-    this.inputAnalyser.fftSize = 512;
-    this.wetAnalyser.fftSize = 512;
-    this.outputAnalyser.fftSize = 512;
+    this.inputAnalyser = raw.createAnalyser(); this.inputAnalyser.fftSize = 512;
+    this.wetAnalyser = raw.createAnalyser(); this.wetAnalyser.fftSize = 512;
+    this.outputAnalyser = raw.createAnalyser(); this.outputAnalyser.fftSize = 512;
     this.inputMeterData = new Float32Array(this.inputAnalyser.fftSize);
     this.wetMeterData = new Float32Array(this.wetAnalyser.fftSize);
     this.outputMeterData = new Float32Array(this.outputAnalyser.fftSize);
 
     const nativeInput = this.inputNode.input as AudioNode;
     const nativeOutput = this.outputNode.input as AudioNode;
-    nativeInput.connect(this.dryGain);
-    this.dryGain.connect(nativeOutput);
+
+    nativeInput.connect(this.dryGain); this.dryGain.connect(nativeOutput);
     nativeInput.connect(this.preDelay);
     this.preDelay.connect(this.lowCut);
     this.lowCut.connect(this.highCut);
@@ -83,9 +86,16 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
     this.bassShelf.connect(this.convolver);
     this.convolver.connect(this.dampingFilter);
     this.dampingFilter.connect(this.wetGain);
-    this.wetGain.connect(nativeOutput);
+    this.wetGain.connect(this.splitter);
+
+    this.splitter.connect(this.ll, 0); this.ll.connect(this.merger, 0, 0);
+    this.splitter.connect(this.lr, 0); this.lr.connect(this.merger, 0, 1);
+    this.splitter.connect(this.rl, 1); this.rl.connect(this.merger, 0, 0);
+    this.splitter.connect(this.rr, 1); this.rr.connect(this.merger, 0, 1);
+    this.merger.connect(nativeOutput);
+
     nativeInput.connect(this.inputAnalyser);
-    this.wetGain.connect(this.wetAnalyser);
+    this.merger.connect(this.wetAnalyser);
     nativeOutput.connect(this.outputAnalyser);
 
     this.applyRealtimeParams(true);
@@ -94,126 +104,122 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
     ProReverbNode.lastActiveInstance = this;
   }
 
-  public setParams(next: Partial<ReverbParams>): void {
-    if (this.isDisposedInternal) return;
+  setParams(next: Partial<ReverbParams>) {
+    if (this.disposedInternal) return;
     const previous = this.params;
     this.params = { ...this.params, ...next };
     this.applyRealtimeParams(false);
-    const structuralChange = previous.size !== this.params.size || previous.decay !== this.params.decay || previous.diff !== this.params.diff || previous.mod !== this.params.mod || previous.speed !== this.params.speed || previous.sep !== this.params.sep || previous.er !== this.params.er || previous.mode !== this.params.mode;
-    if (structuralChange) this.scheduleImpulseRebuild();
+    const structural = previous.size !== this.params.size || previous.decay !== this.params.decay || previous.diff !== this.params.diff || previous.mod !== this.params.mod || previous.speed !== this.params.speed || previous.er !== this.params.er;
+    if (structural) this.scheduleImpulseRebuild();
   }
 
   private applyRealtimeParams(immediate: boolean) {
     const p = this.params;
     const now = this.rawCtx.currentTime;
-    const set = (param: AudioParam, value: number, timeConstant = 0.012) => {
-      if (immediate) param.setValueAtTime(value, now);
-      else {
-        param.cancelScheduledValues(now);
-        param.setTargetAtTime(value, now, timeConstant);
-      }
+    const set = (param: AudioParam, value: number, tc = 0.012) => {
+      param.cancelScheduledValues(now);
+      if (immediate) param.setValueAtTime(value, now); else param.setTargetAtTime(value, now, tc);
     };
-    set(this.dryGain.gain, this.clamp((p.dry ?? 100) / 100, 0, 1));
-    set(this.wetGain.gain, this.clamp((p.wet ?? 50) / 100, 0, 1));
-    set(this.preDelay.delayTime, this.clamp((p.predelay ?? 20) / 1000, 0, 0.25));
-    set(this.lowCut.frequency, this.clamp(p.lcut ?? 120, 20, 2000));
-    set(this.lowCut.Q, 0.707);
-    set(this.highCut.frequency, this.clamp(p.hcut ?? 12000, 1000, 20000));
-    set(this.highCut.Q, 0.707);
-    const bassMultiplier = this.clamp(p.bass ?? 1, 0.5, 2);
-    set(this.bassShelf.frequency, this.clamp(p.cross ?? 500, 100, 2000));
-    set(this.bassShelf.gain, 6 * Math.log2(bassMultiplier));
-    set(this.dampingFilter.frequency, this.clamp(p.damp ?? 5000, 500, 18000));
-    set(this.dampingFilter.Q, 0.707);
+
+    set(this.dryGain.gain, clamp((p.dry ?? 100) / 100, 0, 1));
+    set(this.wetGain.gain, clamp((p.wet ?? 50) / 100, 0, 1));
+    set(this.preDelay.delayTime, clamp((p.predelay ?? 20) / 1000, 0, 0.25));
+    set(this.lowCut.frequency, clamp(p.lcut ?? 120, 20, 2000));
+    set(this.highCut.frequency, clamp(p.hcut ?? 12000, 1000, 20000));
+    const bass = clamp(p.bass ?? 1, 0.5, 2);
+    set(this.bassShelf.frequency, clamp(p.cross ?? 500, 100, 2000));
+    set(this.bassShelf.gain, 6 * Math.log2(bass));
+    set(this.dampingFilter.frequency, clamp(p.damp ?? 5000, 500, 18000));
+    this.lowCut.Q.value = this.highCut.Q.value = this.dampingFilter.Q.value = 0.707;
+
+    const sep = clamp(p.sep ?? 0, -100, 100);
+    let width = 1 + sep / 100;
+    if ((p.mode ?? 0) === 1) width *= 1.22;
+    width = clamp(width, 0, 2.25);
+    const same = (1 + width) * 0.5;
+    const cross = (1 - width) * 0.5;
+    set(this.ll.gain, same); set(this.rr.gain, same);
+    set(this.lr.gain, cross); set(this.rl.gain, cross);
   }
 
   private scheduleImpulseRebuild() {
     if (this.rebuildTimer) clearTimeout(this.rebuildTimer);
-    this.rebuildTimer = setTimeout(() => {
-      this.rebuildTimer = null;
-      if (!this.isDisposedInternal) this.rebuildImpulse();
-    }, 80);
+    this.rebuildTimer = setTimeout(() => { this.rebuildTimer = null; if (!this.disposedInternal) this.rebuildImpulse(); }, 85);
   }
 
   private rebuildImpulse() {
-    if (this.isDisposedInternal) return;
     const p = this.params;
-    const sampleRate = this.rawCtx.sampleRate || 44100;
-    const decay = this.clamp(p.decay ?? 2.5, 0.2, 20);
-    const size = this.clamp(p.size ?? 65, 10, 100) / 100;
-    const diffusion = this.clamp(p.diff ?? 80, 0, 100) / 100;
-    const modulation = this.clamp(p.mod ?? 30, 0, 100) / 100;
-    const modulationSpeed = this.clamp(p.speed ?? 1.5, 0.1, 10);
-    const separation = this.clamp(p.sep ?? 0, -100, 100) / 100;
-    const earlyAmount = this.clamp(p.er ?? 40, 0, 100) / 100;
-    const sideMode = (p.mode ?? 0) === 1;
-    const duration = this.clamp(decay * (0.72 + size * 0.42), 0.25, 12);
-    const length = Math.max(256, Math.floor(sampleRate * duration));
-    const impulse = this.rawCtx.createBuffer(2, length, sampleRate);
-    const left = impulse.getChannelData(0);
-    const right = impulse.getChannelData(1);
+    const sr = this.rawCtx.sampleRate || 44100;
+    const decay = clamp(p.decay ?? 2.5, 0.2, 20);
+    const size = clamp(p.size ?? 65, 10, 100) / 100;
+    const diffusion = clamp(p.diff ?? 80, 0, 100) / 100;
+    const modulation = clamp(p.mod ?? 30, 0, 100) / 100;
+    const speed = clamp(p.speed ?? 1.5, 0.1, 10);
+    const early = clamp(p.er ?? 40, 0, 100) / 100;
+    const duration = clamp(decay * (0.72 + size * 0.42), 0.25, 12);
+    const length = Math.max(256, Math.floor(sr * duration));
+    const impulse = this.rawCtx.createBuffer(2, length, sr);
+    const left = impulse.getChannelData(0), right = impulse.getChannelData(1);
 
-    let stateL = 0x12345678;
-    let stateR = 0x6d2b79f5;
-    const random = (rightChannel: boolean) => {
-      let x = rightChannel ? stateR : stateL;
+    let stateL = 0x12345678, stateR = 0x6d2b79f5;
+    const rand = (rightCh: boolean) => {
+      let x = rightCh ? stateR : stateL;
       x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
-      if (rightChannel) stateR = x >>> 0; else stateL = x >>> 0;
+      if (rightCh) stateR = x >>> 0; else stateL = x >>> 0;
       return ((x >>> 0) / 0xffffffff) * 2 - 1;
     };
 
     const density = 0.18 + diffusion * 0.82;
     const buildSeconds = 0.004 + (1 - size) * 0.035;
-    const decorrelation = this.clamp(0.3 + Math.abs(separation) * 0.65 + (sideMode ? 0.2 : 0), 0, 1);
-    const modulationDepth = modulation * 0.11;
+    const decorrelation = 0.62 + size * 0.26;
+    const modDepth = modulation * 0.1;
     for (let i = 0; i < length; i++) {
-      const t = i / sampleRate;
+      const t = i / sr;
       const envelope = Math.pow(10, (-3 * t) / decay);
       const build = Math.min(1, t / buildSeconds);
-      const flutter = 1 + modulationDepth * Math.sin(2 * Math.PI * modulationSpeed * t);
-      let noiseL = Math.abs(random(false)) < density ? random(false) : 0;
-      let noiseR = Math.abs(random(true)) < density ? random(true) : 0;
-      const common = (noiseL + noiseR) * 0.5;
-      noiseL = common * (1 - decorrelation) + noiseL * decorrelation;
-      noiseR = common * (1 - decorrelation) + noiseR * decorrelation;
-      if (sideMode) noiseR *= -1;
-      left[i] = noiseL * envelope * build * flutter;
-      right[i] = noiseR * envelope * build * flutter;
+      const flutterL = 1 + modDepth * Math.sin(2 * Math.PI * speed * t);
+      const flutterR = 1 + modDepth * Math.sin(2 * Math.PI * speed * 1.013 * t + 1.3);
+      let nL = Math.abs(rand(false)) < density ? rand(false) : 0;
+      let nR = Math.abs(rand(true)) < density ? rand(true) : 0;
+      const common = (nL + nR) * 0.5;
+      nL = common * (1 - decorrelation) + nL * decorrelation;
+      nR = common * (1 - decorrelation) + nR * decorrelation;
+      left[i] = nL * envelope * build * flutterL;
+      right[i] = nR * envelope * build * flutterR;
     }
 
     const earlyMs = [5.3, 8.9, 13.7, 21.1, 34.7, 55.3, 79.1];
-    for (let index = 0; index < earlyMs.length; index++) {
-      const scaledMs = earlyMs[index] * (0.62 + size * 0.9);
-      const position = Math.min(length - 1, Math.round((scaledMs / 1000) * sampleRate));
-      const amplitude = earlyAmount * (0.72 / Math.pow(index + 1, 0.72));
-      const polarity = index % 2 === 0 ? 1 : -1;
-      left[position] += amplitude * polarity;
-      right[position] += amplitude * (index % 3 === 0 ? -polarity : polarity * 0.78) * (sideMode ? -1 : 1);
-    }
+    earlyMs.forEach((ms, idx) => {
+      const posL = Math.min(length - 1, Math.round((ms * (0.62 + size * 0.9) / 1000) * sr));
+      const posR = Math.min(length - 1, posL + Math.round((1.2 + idx * 0.73) / 1000 * sr));
+      const amp = early * (0.72 / Math.pow(idx + 1, 0.72));
+      const polarity = idx % 2 === 0 ? 1 : -1;
+      left[posL] += amp * polarity;
+      right[posR] += amp * (idx % 3 === 0 ? -0.82 : 0.78) * polarity;
+    });
     this.convolver.buffer = impulse;
   }
 
-  private clamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
-  private readRms(analyser: AnalyserNode, data: Float32Array): number {
+  private readRms(analyser: AnalyserNode, data: Float32Array) {
     analyser.getFloatTimeDomainData(data);
-    let sum = 0;
-    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    let sum = 0; for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
     return Math.sqrt(sum / data.length);
   }
-  public getTelemetry(): ReverbTelemetry {
+
+  getTelemetry(): ReverbTelemetry {
     const inputRms = this.readRms(this.inputAnalyser, this.inputMeterData);
     const reverbRms = this.readRms(this.wetAnalyser, this.wetMeterData);
     const outputRms = this.readRms(this.outputAnalyser, this.outputMeterData);
-    return { inputRms, reverbRms, feedbackRms: reverbRms * this.clamp((this.params.size ?? 65) / 100, 0, 1), outputRms, isProcessing: inputRms > 0.0001 || reverbRms > 0.0001 || outputRms > 0.0001 };
+    return { inputRms, reverbRms, feedbackRms: reverbRms * clamp((this.params.size ?? 65) / 100, 0, 1), outputRms, isProcessing: inputRms > 0.0001 || reverbRms > 0.0001 || outputRms > 0.0001 };
   }
-  public dispose(): this {
-    if (this.isDisposedInternal) return this;
-    this.isDisposedInternal = true;
-    if (this.rebuildTimer) { clearTimeout(this.rebuildTimer); this.rebuildTimer = null; }
+
+  dispose(): this {
+    if (this.disposedInternal) return this;
+    this.disposedInternal = true;
+    if (this.rebuildTimer) clearTimeout(this.rebuildTimer);
     ProReverbNode.instances.delete(this);
     if (ProReverbNode.lastActiveInstance === this) ProReverbNode.lastActiveInstance = ProReverbNode.instances.values().next().value || null;
-    const nativeNodes: AudioNode[] = [this.dryGain, this.wetGain, this.preDelay, this.lowCut, this.highCut, this.bassShelf, this.dampingFilter, this.convolver, this.inputAnalyser, this.wetAnalyser, this.outputAnalyser];
-    nativeNodes.forEach((node) => { try { node.disconnect(); } catch {} });
+    [this.dryGain, this.wetGain, this.preDelay, this.lowCut, this.highCut, this.bassShelf, this.dampingFilter, this.convolver, this.splitter, this.merger, this.ll, this.lr, this.rl, this.rr, this.inputAnalyser, this.wetAnalyser, this.outputAnalyser].forEach(n => { try { n.disconnect(); } catch {} });
     super.dispose();
     return this;
   }
