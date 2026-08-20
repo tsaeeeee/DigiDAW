@@ -30,8 +30,8 @@
 input[type="range"].fader-input { appearance: none; background: transparent; cursor: ns-resize; }
 input[type="range"].fader-input::-webkit-slider-thumb { appearance: none; width: 18px; height: 30px; background: #444; border: 1px solid #666; border-radius: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 
-/* Keep the original plugin modal composition exactly as designed. Only the
-   visible title is replaced with DigiDAW's public-facing plugin name. */
+/* Keep the original plugin modal composition exactly as designed. Only identity
+   and accent colors are themed by the EffectRack wrapper. */
 .plugin-title-patch .font-black.text-sm.tracking-wider.text-transparent {
   font-size: 0 !important;
 }
@@ -39,6 +39,85 @@ input[type="range"].fader-input::-webkit-slider-thumb { appearance: none; width:
   content: var(--plugin-title);
   font-size: 14px;
   line-height: 20px;
+}
+
+.plugin-themed [class~="text-[#f472b6]"],
+.plugin-themed [class~="text-[#e879f9]"],
+.plugin-themed [class~="text-[#c084fc]"],
+.plugin-themed [class~="text-[#a78bfa]"] {
+  color: var(--plugin-accent) !important;
+}
+.plugin-themed [class~="hover:text-[#f472b6]"]:hover,
+.plugin-themed [class~="hover:text-[#e879f9]"]:hover,
+.plugin-themed [class~="hover:text-[#c084fc]"]:hover {
+  color: var(--plugin-accent) !important;
+}
+.plugin-themed [class~="bg-[#ec4899]"],
+.plugin-themed [class~="bg-[#f472b6]"],
+.plugin-themed [class~="bg-[#e879f9]"] {
+  background-color: var(--plugin-accent) !important;
+}
+.plugin-themed [class~="bg-[#f472b6]/15"],
+.plugin-themed [class~="bg-[#e879f9]/15"] {
+  background-color: color-mix(in srgb, var(--plugin-accent) 15%, transparent) !important;
+}
+.plugin-themed [class~="border-[#f472b6]"],
+.plugin-themed [class~="border-[#e879f9]"],
+.plugin-themed [class~="border-[#e879f9]/60"] {
+  border-color: var(--plugin-accent) !important;
+}
+.plugin-themed [class~="bg-gradient-to-r"] {
+  background-image: linear-gradient(to right, var(--plugin-accent), var(--plugin-accent-2)) !important;
+}
+.plugin-themed button[class~="bg-[#ec4899]"] {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--plugin-accent) 70%, transparent) !important;
+}
+
+/* Sentence case for section/switch copy while keeping the old placement. Knob
+   labels/sub-labels are normalized inside PluginKnob itself. */
+.plugin-themed [class*="tracking-[0.18em]"],
+.plugin-themed [class~="tracking-widest"],
+.plugin-themed .uppercase {
+  text-transform: lowercase !important;
+}
+.plugin-themed [class*="tracking-[0.18em]"]::first-letter,
+.plugin-themed [class~="tracking-widest"]::first-letter,
+.plugin-themed .uppercase::first-letter {
+  text-transform: uppercase !important;
+}
+
+/* Diequ filter shapes: keep the exact five-button layout, replace LP/HP/BELL/LS/HS
+   text with compact response-curve icons. */
+.plugin-theme-eq button[title="Bell / Peaking"],
+.plugin-theme-eq button[title="High Pass"],
+.plugin-theme-eq button[title="Low Pass"],
+.plugin-theme-eq button[title="Low Shelf"],
+.plugin-theme-eq button[title="High Shelf"] {
+  font-size: 0 !important;
+}
+.plugin-theme-eq button[title="Bell / Peaking"]::before,
+.plugin-theme-eq button[title="High Pass"]::before,
+.plugin-theme-eq button[title="Low Pass"]::before,
+.plugin-theme-eq button[title="Low Shelf"]::before,
+.plugin-theme-eq button[title="High Shelf"]::before {
+  content: "";
+  display: block;
+  width: 24px;
+  height: 14px;
+  margin: 0 auto;
+  background: currentColor;
+  -webkit-mask: var(--filter-shape-icon) center / contain no-repeat;
+  mask: var(--filter-shape-icon) center / contain no-repeat;
+}
+.plugin-theme-eq button[title="Bell / Peaking"] { --filter-shape-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 14'%3E%3Cpath d='M2 12C6 12 7 2 12 2s6 10 10 10' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.plugin-theme-eq button[title="High Pass"] { --filter-shape-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 14'%3E%3Cpath d='M2 12c6 0 6-9 12-9h8' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.plugin-theme-eq button[title="Low Pass"] { --filter-shape-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 14'%3E%3Cpath d='M2 3h8c6 0 6 9 12 9' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.plugin-theme-eq button[title="Low Shelf"] { --filter-shape-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 14'%3E%3Cpath d='M2 11h7c3 0 3-8 6-8h7' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.plugin-theme-eq button[title="High Shelf"] { --filter-shape-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 14'%3E%3Cpath d='M2 3h7c3 0 3 8 6 8h7' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
+
+/* Diecho stays the same UI, only a little narrower so it consumes less screen. */
+.plugin-theme-reverb .fixed.pointer-events-auto.overflow-hidden.rounded-xl {
+  width: 700px !important;
 }
 
 /* Timeline selection must never visually stretch or zoom the clip. The selected
