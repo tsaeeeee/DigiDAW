@@ -4,14 +4,24 @@ const gainToDb = (gain) => 20 * Math.log10(Math.max(1e-9, gain));
 
 class BiquadSection {
   constructor() {
-    this.b0 = 1; this.b1 = 0; this.b2 = 0; this.a1 = 0; this.a2 = 0;
-    this.z1 = [0, 0]; this.z2 = [0, 0];
+    this.b0 = 1;
+    this.b1 = 0;
+    this.b2 = 0;
+    this.a1 = 0;
+    this.a2 = 0;
+    this.z1 = [0, 0];
+    this.z2 = [0, 0];
   }
 
-  setLowpass(frequency, q = Math.SQRT1_2) { this.setCoefficients('lowpass', frequency, q); }
-  setHighpass(frequency, q = Math.SQRT1_2) { this.setCoefficients('highpass', frequency, q); }
+  setLowpass(frequency, q = Math.SQRT1_2) {
+    this.setBasicCoefficients('lowpass', frequency, q);
+  }
 
-  setCoefficients(type, frequency, q) {
+  setHighpass(frequency, q = Math.SQRT1_2) {
+    this.setBasicCoefficients('highpass', frequency, q);
+  }
+
+  setBasicCoefficients(type, frequency, q) {
     const f = clamp(frequency, 20, sampleRate * 0.45);
     const omega = 2 * Math.PI * f / sampleRate;
     const cos = Math.cos(omega);
@@ -33,10 +43,43 @@ class BiquadSection {
     this.a2 = (1 - alpha) / a0;
   }
 
+  /**
+   * RBJ high-shelf. gainDb is always <= 0 in Disser, so this stage has no
+   * positive-gain state. At 0 dB the numerator and denominator become equal
+   * and the filter is an exact unity transfer function.
+   */
+  setHighShelf(frequency, gainDb, slope = 0.7) {
+    const f = clamp(frequency, 20, sampleRate * 0.45);
+    const safeGainDb = clamp(gainDb, -24, 0);
+    const safeSlope = clamp(slope, 0.25, 1);
+    const A = Math.pow(10, safeGainDb / 40);
+    const omega = 2 * Math.PI * f / sampleRate;
+    const cos = Math.cos(omega);
+    const sin = Math.sin(omega);
+    const alpha = (sin * 0.5) * Math.sqrt(
+      Math.max(0, (A + 1 / A) * (1 / safeSlope - 1) + 2),
+    );
+    const beta = 2 * Math.sqrt(A) * alpha;
+
+    const b0 = A * ((A + 1) + (A - 1) * cos + beta);
+    const b1 = -2 * A * ((A - 1) + (A + 1) * cos);
+    const b2 = A * ((A + 1) + (A - 1) * cos - beta);
+    const a0 = (A + 1) - (A - 1) * cos + beta;
+    const a1 = 2 * ((A - 1) - (A + 1) * cos);
+    const a2 = (A + 1) - (A - 1) * cos - beta;
+
+    this.b0 = b0 / a0;
+    this.b1 = b1 / a0;
+    this.b2 = b2 / a0;
+    this.a1 = a1 / a0;
+    this.a2 = a2 / a0;
+  }
+
   process(sample, channel) {
-    const output = this.b0 * sample + this.z1[channel];
-    this.z1[channel] = this.b1 * sample - this.a1 * output + this.z2[channel];
-    this.z2[channel] = this.b2 * sample - this.a2 * output;
+    const index = Math.min(channel, 1);
+    const output = this.b0 * sample + this.z1[index];
+    this.z1[index] = this.b1 * sample - this.a1 * output + this.z2[index];
+    this.z2[index] = this.b2 * sample - this.a2 * output;
     return output;
   }
 }
@@ -63,22 +106,70 @@ class Lr4Filter {
   }
 }
 
+class DynamicHighShelf {
+  constructor() {
+    this.filter = new BiquadSection();
+    this.centerHz = 6500;
+    this.slope = 0.7;
+    this.lastGainDb = Number.NaN;
+    this.lastLow = -1;
+    this.lastHigh = -1;
+    this.setRange(4500, 9500);
+    this.setGainDb(0, true);
+  }
+
+  /**
+   * The user-selected low/high values remain the detector boundaries. For the
+   * audio path they describe the transition region of a subtractive shelf:
+   * narrow ranges produce a steeper shelf; broad ranges produce a gentler one.
+   * Frequencies above the selected range are therefore not left as an untreated
+   * "air" branch that can sound relatively boosted after de-essing.
+   */
+  setRange(low, high) {
+    if (Math.abs(low - this.lastLow) < 0.1 && Math.abs(high - this.lastHigh) < 0.1) return;
+    this.lastLow = low;
+    this.lastHigh = high;
+
+    const safeLow = clamp(low, 2500, Math.min(10000, sampleRate * 0.34));
+    const safeHigh = clamp(
+      Math.max(safeLow + 500, high),
+      safeLow + 500,
+      Math.min(16000, sampleRate * 0.45),
+    );
+
+    this.centerHz = Math.sqrt(safeLow * safeHigh);
+    const octaveWidth = Math.max(0.2, Math.log2(safeHigh / safeLow));
+    this.slope = clamp(1 / (octaveWidth * 1.3), 0.3, 1);
+    this.lastGainDb = Number.NaN;
+  }
+
+  setGainDb(gainDb, force = false) {
+    const safe = clamp(gainDb, -18, 0);
+    if (!force && Number.isFinite(this.lastGainDb) && Math.abs(safe - this.lastGainDb) < 0.006) return;
+    this.lastGainDb = safe;
+    this.filter.setHighShelf(this.centerHz, safe, this.slope);
+  }
+
+  process(sample, channel) {
+    return this.filter.process(sample, channel);
+  }
+}
+
 /**
  * Disser dynamic sibilance processor.
  *
- * Crossover reconstruction:
- * - first LR4 split => low / upper
- * - upper is split again => sibilance / high
- * - low receives the second crossover's LP4+HP4 phase rotation
- * With zero gain reduction the three bands reconstruct as an all-pass magnitude
- * response, so moving the selected range does not secretly EQ the vocal.
+ * Detection and processing are intentionally separate:
  *
- * Detector:
- * Absolute S-band dBFS alone is not reliable because vocal recording levels vary.
- * We therefore track both the selected S-band envelope and a broadband envelope.
- * Detection requires enough absolute S-band level AND enough high-frequency
- * prominence relative to the body of the vocal. The Detection control changes
- * both sensitivity margins; Threshold remains the absolute floor control.
+ *   detector: input -> HP4(low) -> LP4(high) -> envelope/prominence detector
+ *
+ *   Split audio: input -> single-path dynamic high-shelf attenuation -> output
+ *   Wide audio:  input -> broadband gain attenuation -> output
+ *
+ * The previous Split engine reconstructed low + attenuated-S + high crossover
+ * branches. That reconstruction was flat at 0 dB GR, but once the S branch was
+ * reduced the untouched band above Range High could become perceptually dominant
+ * (and time-varying branch phase could make the result feel like a high boost).
+ * The new Split path never sums parallel frequency bands and has no makeup gain.
  */
 class DisserProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
@@ -98,12 +189,10 @@ class DisserProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
 
-    this.lowPass = new Lr4Filter('lowpass');
-    this.upperHighPass = new Lr4Filter('highpass');
-    this.lowPhaseLowPass = new Lr4Filter('lowpass');
-    this.lowPhaseHighPass = new Lr4Filter('highpass');
-    this.sibLowPass = new Lr4Filter('lowpass');
-    this.highPass = new Lr4Filter('highpass');
+    // Detector-only filters. They never participate in Normal audio output.
+    this.detectorHighPass = new Lr4Filter('highpass');
+    this.detectorLowPass = new Lr4Filter('lowpass');
+    this.dynamicShelf = new DynamicHighShelf();
 
     this.sibEnvelope = 0;
     this.broadbandEnvelope = 0;
@@ -120,7 +209,7 @@ class DisserProcessor extends AudioWorkletProcessor {
     this.lastHigh = -1;
   }
 
-  updateCrossovers(low, high) {
+  updateRange(low, high) {
     const safeLow = clamp(low, 2500, Math.min(10000, sampleRate * 0.34));
     const safeHigh = clamp(
       Math.max(safeLow + 500, high),
@@ -129,18 +218,15 @@ class DisserProcessor extends AudioWorkletProcessor {
     );
 
     if (Math.abs(safeLow - this.lastLow) > 0.1) {
-      this.lowPass.setFrequency(safeLow);
-      this.upperHighPass.setFrequency(safeLow);
+      this.detectorHighPass.setFrequency(safeLow);
       this.lastLow = safeLow;
     }
-
     if (Math.abs(safeHigh - this.lastHigh) > 0.1) {
-      this.lowPhaseLowPass.setFrequency(safeHigh);
-      this.lowPhaseHighPass.setFrequency(safeHigh);
-      this.sibLowPass.setFrequency(safeHigh);
-      this.highPass.setFrequency(safeHigh);
+      this.detectorLowPass.setFrequency(safeHigh);
       this.lastHigh = safeHigh;
     }
+
+    this.dynamicShelf.setRange(safeLow, safeHigh);
   }
 
   process(inputs, outputs, parameters) {
@@ -158,7 +244,7 @@ class DisserProcessor extends AudioWorkletProcessor {
     const listen = parameters.listen[0] >= 0.5;
     const wideMode = parameters.mode[0] >= 0.5;
 
-    this.updateCrossovers(low, high);
+    this.updateRange(low, high);
 
     const sibAttackCoeff = Math.exp(-1 / (sampleRate * attackSeconds));
     const sibReleaseCoeff = Math.exp(-1 / (sampleRate * releaseSeconds));
@@ -169,36 +255,19 @@ class DisserProcessor extends AudioWorkletProcessor {
     const frameCount = output[0].length;
 
     const detectionNorm = detection / 100;
-    // Higher Detection means the S-band may sit further below the broadband body
-    // and still count as sibilance. At the default 65, ~22 dB of relative margin
-    // is allowed, which works much better across quiet and loud vocal recordings.
     const prominenceThresholdDb = -8 - detectionNorm * 22;
-    // Threshold is still meaningful, but Detection can extend the effective floor
-    // downward so a quiet recording does not behave as if the plugin were bypassed.
     const absoluteGateDb = threshold - (4 + detectionNorm * 18);
 
     for (let frame = 0; frame < frameCount; frame++) {
       const inputL = input[0] ? (input[0][frame] || 0) : 0;
       const inputR = input[1] ? (input[1][frame] || 0) : inputL;
       const samples = [inputL, inputR];
-      const lows = [0, 0];
       const sibs = [0, 0];
-      const highs = [0, 0];
 
+      // Detector sidechain only. The main Split signal never enters this graph.
       for (let channel = 0; channel < 2; channel++) {
-        const sample = samples[channel];
-        const lowBase = this.lowPass.process(sample, channel);
-        const upper = this.upperHighPass.process(sample, channel);
-
-        const compensatedLow =
-          this.lowPhaseLowPass.process(lowBase, channel) +
-          this.lowPhaseHighPass.process(lowBase, channel);
-        const sibBand = this.sibLowPass.process(upper, channel);
-        const highBand = this.highPass.process(upper, channel);
-
-        lows[channel] = compensatedLow;
-        sibs[channel] = sibBand;
-        highs[channel] = highBand;
+        const hp = this.detectorHighPass.process(samples[channel], channel);
+        sibs[channel] = this.detectorLowPass.process(hp, channel);
       }
 
       const sibPeak = Math.max(Math.abs(sibs[0]), Math.abs(sibs[1]), 1e-9);
@@ -216,15 +285,9 @@ class DisserProcessor extends AudioWorkletProcessor {
 
       const levelExcess = this.rawSibilanceDb - absoluteGateDb;
       const prominenceExcess = this.prominenceDb - prominenceThresholdDb;
-
-      // Both conditions matter. The +6 dB knee allowance prevents the relative
-      // test from becoming a hard gate while still rejecting normal vowels whose
-      // upper-band energy is weak relative to the vocal body.
       const combinedExcess = Math.min(levelExcess, prominenceExcess + 6);
       this.triggerExcessDb = Math.max(0, combinedExcess);
 
-      // A smooth saturating gain computer is easier to tune than compressor ratio.
-      // Amount is a true maximum attenuation, never makeup gain.
       const targetReductionDb = this.triggerExcessDb > 0
         ? amountDb * (1 - Math.exp(-this.triggerExcessDb / 5.0))
         : 0;
@@ -232,9 +295,12 @@ class DisserProcessor extends AudioWorkletProcessor {
       const gainCoeff = targetGain < this.gain ? gainAttackCoeff : gainReleaseCoeff;
       this.gain = targetGain + gainCoeff * (this.gain - targetGain);
       this.reductionDb = Math.max(0, -gainToDb(this.gain));
-
-      // UI detector value follows the same trigger domain as the gain computer.
       this.detectorDb = absoluteGateDb + this.triggerExcessDb;
+
+      // Coefficients only change when the smoothed reduction has moved by a
+      // meaningful fraction of a centibel. gainDb is clamped <= 0, so Split has
+      // no positive-gain filter state at any point.
+      this.dynamicShelf.setGainDb(-this.reductionDb);
 
       for (let channel = 0; channel < output.length; channel++) {
         const index = Math.min(channel, 1);
@@ -243,7 +309,7 @@ class DisserProcessor extends AudioWorkletProcessor {
         } else if (wideMode) {
           output[channel][frame] = samples[index] * this.gain;
         } else {
-          output[channel][frame] = lows[index] + sibs[index] * this.gain + highs[index];
+          output[channel][frame] = this.dynamicShelf.process(samples[index], index);
         }
       }
     }
