@@ -30,6 +30,17 @@
 input[type="range"].fader-input { appearance: none; background: transparent; cursor: ns-resize; }
 input[type="range"].fader-input::-webkit-slider-thumb { appearance: none; width: 18px; height: 30px; background: #444; border: 1px solid #666; border-radius: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 
+/* Keep the original plugin modal composition exactly as designed. Only the
+   visible title is replaced with DigiDAW's public-facing plugin name. */
+.plugin-title-patch .font-black.text-sm.tracking-wider.text-transparent {
+  font-size: 0 !important;
+}
+.plugin-title-patch .font-black.text-sm.tracking-wider.text-transparent::after {
+  content: var(--plugin-title);
+  font-size: 14px;
+  line-height: 20px;
+}
+
 /* Timeline selection must never visually stretch or zoom the clip. The selected
    state is border/glow only; this overrides Motion/Tailwind scale transforms on
    the draggable audio-clip container without changing its timeline width. */
