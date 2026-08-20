@@ -24,13 +24,19 @@ export interface DeEsserTelemetry {
   backend: 'loading' | 'worklet' | 'native-fallback';
 }
 
+type DisserWorkletContext = BaseAudioContext & {
+  audioWorklet?: AudioWorklet;
+  __digidawDisserWorkletLoad?: Promise<void>;
+};
+
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const dbToGain = (db: number) => Math.pow(10, db / 20);
+const gainToDb = (gain: number) => 20 * Math.log10(Math.max(1e-9, gain));
 
 export class DeEsserNode extends Tone.ToneAudioNode<any> {
   readonly name = 'DeEsserNode';
   public static lastActiveInstance: DeEsserNode | null = null;
   public static instances = new Set<DeEsserNode>();
-  private static workletLoads = new WeakMap<BaseAudioContext, Promise<void>>();
 
   public readonly input: Tone.Gain;
   public readonly output: Tone.Gain;
@@ -38,10 +44,12 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
   public readonly outputNode: Tone.Gain;
 
   private raw: BaseAudioContext;
-  private dryGain: Tone.Gain;
+  private startupDryGain: Tone.Gain | null;
   private processedGain: Tone.Gain;
   private workletNode: AudioWorkletNode | null = null;
+  private activationTimer: ReturnType<typeof setTimeout> | null = null;
   private backend: DeEsserTelemetry['backend'] = 'loading';
+
   private reductionDb = 0;
   private detectorDb = -120;
   private rawSibilanceDb = -120;
@@ -51,13 +59,22 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
   private disposedInternal = false;
   private params: DeEsserParams = {};
 
-  // Compatibility fallback. Supported Chromium browsers should use the worklet.
-  private fallbackFilters: BiquadFilterNode[] = [];
-  private fallbackCompressor: DynamicsCompressorNode | null = null;
-  private fallbackLowGain: GainNode | null = null;
-  private fallbackSibGain: GainNode | null = null;
-  private fallbackHighGain: GainNode | null = null;
+  // Native compatibility path. It deliberately mirrors the routing principle of
+  // the worklet: ONE main audio path plus a detector-only sidechain. There is no
+  // low + compressed-S + high reconstruction anymore.
   private fallbackNodes: AudioNode[] = [];
+  private fallbackDetectorFilters: BiquadFilterNode[] = [];
+  private fallbackShelf: BiquadFilterNode | null = null;
+  private fallbackWideGain: GainNode | null = null;
+  private fallbackMainRouteGain: GainNode | null = null;
+  private fallbackListenRouteGain: GainNode | null = null;
+  private fallbackSibAnalyser: AnalyserNode | null = null;
+  private fallbackBroadAnalyser: AnalyserNode | null = null;
+  private fallbackSibData: Float32Array | null = null;
+  private fallbackBroadData: Float32Array | null = null;
+  private fallbackTimer: ReturnType<typeof setInterval> | null = null;
+  private fallbackSibEnvelope = 0;
+  private fallbackBroadEnvelope = 0;
 
   constructor(params: DeEsserParams = {}) {
     super();
@@ -68,12 +85,15 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
     this.input = this.inputNode;
     this.output = this.outputNode;
 
-    // Pass clean audio only while the asynchronous DSP module loads. Once the
-    // processor exists, the dry startup path is faded out permanently.
-    this.dryGain = new Tone.Gain({ context: this.context, gain: 1 });
+    // Only while the async backend initializes:
+    // input -> startupDryGain -> output.
+    // Once the backend is ready this node is physically disconnected and
+    // disposed, so a later automation/HMR issue cannot leak clean audio in
+    // parallel with the processed signal.
+    this.startupDryGain = new Tone.Gain({ context: this.context, gain: 1 });
     this.processedGain = new Tone.Gain({ context: this.context, gain: 0 });
-    this.inputNode.connect(this.dryGain);
-    this.dryGain.connect(this.outputNode);
+    this.inputNode.connect(this.startupDryGain);
+    this.startupDryGain.connect(this.outputNode);
     this.processedGain.connect(this.outputNode);
 
     this.update(params, true);
@@ -89,28 +109,45 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
     return `${normalized}dsp/disser-processor.js`;
   }
 
+  /**
+   * Cache the addModule promise on the AudioContext itself, not only on this TS
+   * module. The context often survives Vite HMR while module statics do not.
+   */
   private static ensureWorklet(context: BaseAudioContext) {
-    const audioWorklet = (context as BaseAudioContext & { audioWorklet?: AudioWorklet }).audioWorklet;
+    const workletContext = context as DisserWorkletContext;
+    const audioWorklet = workletContext.audioWorklet;
     if (!audioWorklet || typeof AudioWorkletNode === 'undefined') {
       return Promise.reject(new Error('AudioWorklet is unavailable'));
     }
 
-    const existing = DeEsserNode.workletLoads.get(context);
-    if (existing) return existing;
+    if (workletContext.__digidawDisserWorkletLoad) {
+      return workletContext.__digidawDisserWorkletLoad;
+    }
 
     const load = audioWorklet.addModule(DeEsserNode.getWorkletUrl()).catch((error) => {
-      DeEsserNode.workletLoads.delete(context);
+      delete workletContext.__digidawDisserWorkletLoad;
       throw error;
     });
-    DeEsserNode.workletLoads.set(context, load);
+    workletContext.__digidawDisserWorkletLoad = load;
     return load;
   }
 
   private async initializeProcessor() {
+    let moduleLoadError: unknown = null;
+
     try {
       await DeEsserNode.ensureWorklet(this.raw);
-      if (this.disposedInternal) return;
+    } catch (error) {
+      moduleLoadError = error;
+    }
 
+    if (this.disposedInternal) return;
+
+    // HMR can leave an already-registered processor in a still-live AudioContext.
+    // In that case addModule may reject on duplicate registration even though the
+    // processor itself is perfectly usable. Always try constructing the node
+    // before deciding that we need the compatibility backend.
+    try {
       const p = this.normalizedParams();
       const node = new AudioWorkletNode(this.raw, 'disser-dynamic-sibilance', {
         numberOfInputs: 1,
@@ -141,38 +178,76 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
         this.prominenceDb = Math.min(24, Number(event.data.prominenceDb) || -120);
         this.triggerExcessDb = Math.max(0, Number(event.data.triggerExcessDb) || 0);
       };
+      node.onprocessorerror = () => {
+        console.error('Disser AudioWorklet processor error. Recreate the audio context before continuing.');
+      };
 
       this.workletNode = node;
       this.backend = 'worklet';
       Tone.connect(this.inputNode, node);
       Tone.connect(node, this.processedGain);
       this.applyWorkletParams(true);
-      this.fadeToProcessed();
-    } catch (error) {
-      if (this.disposedInternal) return;
-      console.warn('Disser AudioWorklet unavailable; using native fallback.', error);
-      this.buildNativeFallback();
-      this.backend = 'native-fallback';
-      this.applyNativeFallbackParams(true);
-      this.fadeToProcessed();
+      this.activateProcessedRoute();
+      return;
+    } catch (nodeError) {
+      if (moduleLoadError) {
+        console.warn('Disser AudioWorklet module could not be activated; using safe serial fallback.', moduleLoadError, nodeError);
+      } else {
+        console.warn('Disser AudioWorklet node could not be created; using safe serial fallback.', nodeError);
+      }
     }
+
+    if (this.disposedInternal) return;
+    this.buildNativeFallback();
+    this.backend = 'native-fallback';
+    this.applyNativeFallbackParams(true);
+    this.startNativeFallbackDetector();
+    this.activateProcessedRoute();
   }
 
-  private fadeToProcessed() {
-    // Explicitly cancel old startup automation so hot reload / rapid rack changes
-    // cannot leave a parallel clean path masquerading as a bypassed processor.
+  /**
+   * Short startup crossfade, then physically remove the clean branch from the
+   * graph. After this method finishes the only route to output is processedGain.
+   */
+  private activateProcessedRoute() {
+    const dry = this.startupDryGain;
+    const now = this.raw.currentTime;
+
     try {
-      const now = this.raw.currentTime;
-      this.dryGain.gain.cancelScheduledValues(now);
       this.processedGain.gain.cancelScheduledValues(now);
-      this.dryGain.gain.setValueAtTime(this.dryGain.gain.value, now);
       this.processedGain.gain.setValueAtTime(this.processedGain.gain.value, now);
-      this.dryGain.gain.linearRampToValueAtTime(0, now + 0.035);
-      this.processedGain.gain.linearRampToValueAtTime(1, now + 0.035);
+      this.processedGain.gain.linearRampToValueAtTime(1, now + 0.018);
+
+      if (dry) {
+        dry.gain.cancelScheduledValues(now);
+        dry.gain.setValueAtTime(dry.gain.value, now);
+        dry.gain.linearRampToValueAtTime(0, now + 0.018);
+      }
     } catch {
-      this.dryGain.gain.value = 0;
       this.processedGain.gain.value = 1;
+      if (dry) dry.gain.value = 0;
     }
+
+    if (this.activationTimer) clearTimeout(this.activationTimer);
+    this.activationTimer = setTimeout(() => {
+      this.activationTimer = null;
+      if (this.disposedInternal) return;
+      this.processedGain.gain.value = 1;
+      this.disconnectStartupDryPath();
+    }, 36);
+  }
+
+  private disconnectStartupDryPath() {
+    const dry = this.startupDryGain;
+    if (!dry) return;
+
+    try { dry.gain.value = 0; } catch {}
+    // The critical operation is disconnecting dry's OUTPUT from outputNode.
+    // Even if inputNode -> dry survives, it can no longer reach the plugin output.
+    try { dry.disconnect(); } catch {}
+    try { this.inputNode.disconnect(dry); } catch {}
+    try { dry.dispose(); } catch {}
+    this.startupDryGain = null;
   }
 
   private normalizedParams() {
@@ -183,8 +258,6 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
       16000,
     );
 
-    // Existing projects may still carry the old compressor ratio. Translate it
-    // into a sensible maximum attenuation only when amountDb is absent.
     const legacyRatio = clamp(this.params.ratio ?? 6, 1, 20);
     const legacyAmount = clamp((legacyRatio - 1) * 1.4, 0, 18);
 
@@ -232,111 +305,181 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
     this.setWorkletParam('mode', p.mode, immediate);
   }
 
-  /** Compatibility fallback with the same phase-compensated LR4 split. */
+  private nativeInputNode() {
+    return (((this.inputNode as any).output ?? (this.inputNode as any).input) as AudioNode);
+  }
+
+  private nativeProcessedInput() {
+    return (((this.processedGain as any).input ?? (this.processedGain as any).output) as AudioNode);
+  }
+
+  /**
+   * Safe compatibility backend:
+   *
+   * main audio: input -> dynamic subtractive high shelf -> wide gain -> route -> output
+   * detector:   input -> HP -> HP -> LP -> LP -> analyser (sidechain only)
+   * listen:     detector band -> listen route -> output
+   *
+   * Normal audio never sums low/mid/high frequency branches.
+   */
   private buildNativeFallback() {
     const raw = this.raw;
+    const nativeInput = this.nativeInputNode();
+    const nativeProcessed = this.nativeProcessedInput();
+
     const makeFilter = (type: BiquadFilterType) => {
       const filter = raw.createBiquadFilter();
       filter.type = type;
       filter.Q.value = Math.SQRT1_2;
-      this.fallbackFilters.push(filter);
       this.fallbackNodes.push(filter);
       return filter;
     };
 
-    const lowLp1 = makeFilter('lowpass');
-    const lowLp2 = makeFilter('lowpass');
-    const upperHp1 = makeFilter('highpass');
-    const upperHp2 = makeFilter('highpass');
-    const lowPhaseLp1 = makeFilter('lowpass');
-    const lowPhaseLp2 = makeFilter('lowpass');
-    const lowPhaseHp1 = makeFilter('highpass');
-    const lowPhaseHp2 = makeFilter('highpass');
-    const sibLp1 = makeFilter('lowpass');
-    const sibLp2 = makeFilter('lowpass');
-    const highHp1 = makeFilter('highpass');
-    const highHp2 = makeFilter('highpass');
+    const hp1 = makeFilter('highpass');
+    const hp2 = makeFilter('highpass');
+    const lp1 = makeFilter('lowpass');
+    const lp2 = makeFilter('lowpass');
+    this.fallbackDetectorFilters = [hp1, hp2, lp1, lp2];
 
-    const compressor = raw.createDynamicsCompressor();
-    const lowGain = raw.createGain();
-    const sibGain = raw.createGain();
-    const highGain = raw.createGain();
-    const lowDelay = raw.createDelay(0.02);
-    const highDelay = raw.createDelay(0.02);
-    lowDelay.delayTime.value = 0.006;
-    highDelay.delayTime.value = 0.006;
+    const shelf = raw.createBiquadFilter();
+    shelf.type = 'highshelf';
+    shelf.gain.value = 0;
+    const wideGain = raw.createGain();
+    const mainRoute = raw.createGain();
+    const listenRoute = raw.createGain();
+    const sibAnalyser = raw.createAnalyser();
+    const broadAnalyser = raw.createAnalyser();
+    sibAnalyser.fftSize = 512;
+    broadAnalyser.fftSize = 512;
+    sibAnalyser.smoothingTimeConstant = 0;
+    broadAnalyser.smoothingTimeConstant = 0;
 
-    this.fallbackCompressor = compressor;
-    this.fallbackLowGain = lowGain;
-    this.fallbackSibGain = sibGain;
-    this.fallbackHighGain = highGain;
-    this.fallbackNodes.push(compressor, lowGain, sibGain, highGain, lowDelay, highDelay);
+    this.fallbackShelf = shelf;
+    this.fallbackWideGain = wideGain;
+    this.fallbackMainRouteGain = mainRoute;
+    this.fallbackListenRouteGain = listenRoute;
+    this.fallbackSibAnalyser = sibAnalyser;
+    this.fallbackBroadAnalyser = broadAnalyser;
+    this.fallbackSibData = new Float32Array(sibAnalyser.fftSize);
+    this.fallbackBroadData = new Float32Array(broadAnalyser.fftSize);
+    this.fallbackNodes.push(shelf, wideGain, mainRoute, listenRoute, sibAnalyser, broadAnalyser);
 
-    const nativeInput = this.inputNode.input as AudioNode;
-    const nativeProcessed = this.processedGain.input as AudioNode;
+    // ONE normal audio path.
+    nativeInput.connect(shelf);
+    shelf.connect(wideGain);
+    wideGain.connect(mainRoute);
+    mainRoute.connect(nativeProcessed);
 
-    nativeInput.connect(lowLp1);
-    lowLp1.connect(lowLp2);
-    lowLp2.connect(lowPhaseLp1);
-    lowPhaseLp1.connect(lowPhaseLp2);
-    lowPhaseLp2.connect(lowDelay);
-    lowLp2.connect(lowPhaseHp1);
-    lowPhaseHp1.connect(lowPhaseHp2);
-    lowPhaseHp2.connect(lowDelay);
-    lowDelay.connect(lowGain);
-    lowGain.connect(nativeProcessed);
+    // Detector-only sidechain.
+    nativeInput.connect(hp1);
+    hp1.connect(hp2);
+    hp2.connect(lp1);
+    lp1.connect(lp2);
+    lp2.connect(sibAnalyser);
+    lp2.connect(listenRoute);
+    listenRoute.connect(nativeProcessed);
 
-    nativeInput.connect(upperHp1);
-    upperHp1.connect(upperHp2);
-    upperHp2.connect(sibLp1);
-    sibLp1.connect(sibLp2);
-    sibLp2.connect(compressor);
-    compressor.connect(sibGain);
-    sibGain.connect(nativeProcessed);
-    upperHp2.connect(highHp1);
-    highHp1.connect(highHp2);
-    highHp2.connect(highDelay);
-    highDelay.connect(highGain);
-    highGain.connect(nativeProcessed);
+    // Broadband envelope reference; never routed to audio output.
+    nativeInput.connect(broadAnalyser);
   }
 
   private applyNativeFallbackParams(_immediate: boolean) {
-    if (!this.fallbackCompressor || this.fallbackFilters.length < 12) return;
+    if (!this.fallbackShelf || this.fallbackDetectorFilters.length < 4) return;
     const p = this.normalizedParams();
-    const [
-      lowLp1, lowLp2, upperHp1, upperHp2,
-      lowPhaseLp1, lowPhaseLp2, lowPhaseHp1, lowPhaseHp2,
-      sibLp1, sibLp2, highHp1, highHp2,
-    ] = this.fallbackFilters;
+    const [hp1, hp2, lp1, lp2] = this.fallbackDetectorFilters;
+    [hp1, hp2].forEach((filter) => { filter.frequency.value = p.lowFreq; });
+    [lp1, lp2].forEach((filter) => { filter.frequency.value = p.highFreq; });
 
-    [lowLp1, lowLp2, upperHp1, upperHp2].forEach((filter) => { filter.frequency.value = p.lowFreq; });
-    [lowPhaseLp1, lowPhaseLp2, lowPhaseHp1, lowPhaseHp2, sibLp1, sibLp2, highHp1, highHp2]
-      .forEach((filter) => { filter.frequency.value = p.highFreq; });
+    this.fallbackShelf.frequency.value = Math.sqrt(p.lowFreq * p.highFreq);
 
-    const detectionNorm = p.detection / 100;
-    this.fallbackCompressor.threshold.value = clamp(p.threshold - (4 + detectionNorm * 18), -100, -4);
-    this.fallbackCompressor.knee.value = 6;
-    this.fallbackCompressor.ratio.value = clamp(1 + p.amountDb * 0.9, 1, 20);
-    this.fallbackCompressor.attack.value = p.attack / 1000;
-    this.fallbackCompressor.release.value = p.release / 1000;
-
+    const now = this.raw.currentTime;
     const listen = p.listen === 1;
-    if (this.fallbackLowGain) this.fallbackLowGain.gain.value = listen ? 0 : 1;
-    if (this.fallbackHighGain) this.fallbackHighGain.gain.value = listen ? 0 : 1;
-    if (this.fallbackSibGain) this.fallbackSibGain.gain.value = 1;
-    this.reductionDb = Math.max(0, -(this.fallbackCompressor.reduction || 0));
+    if (this.fallbackMainRouteGain) {
+      this.fallbackMainRouteGain.gain.cancelScheduledValues(now);
+      this.fallbackMainRouteGain.gain.setTargetAtTime(listen ? 0 : 1, now, 0.006);
+    }
+    if (this.fallbackListenRouteGain) {
+      this.fallbackListenRouteGain.gain.cancelScheduledValues(now);
+      this.fallbackListenRouteGain.gain.setTargetAtTime(listen ? 1 : 0, now, 0.006);
+    }
+  }
+
+  private startNativeFallbackDetector() {
+    if (this.fallbackTimer) clearInterval(this.fallbackTimer);
+    const intervalSeconds = 0.016;
+
+    this.fallbackTimer = setInterval(() => {
+      if (
+        this.disposedInternal ||
+        !this.fallbackSibAnalyser ||
+        !this.fallbackBroadAnalyser ||
+        !this.fallbackSibData ||
+        !this.fallbackBroadData ||
+        !this.fallbackShelf ||
+        !this.fallbackWideGain
+      ) return;
+
+      this.fallbackSibAnalyser.getFloatTimeDomainData(this.fallbackSibData);
+      this.fallbackBroadAnalyser.getFloatTimeDomainData(this.fallbackBroadData);
+
+      let sibPeak = 1e-9;
+      let broadPeak = 1e-9;
+      for (let i = 0; i < this.fallbackSibData.length; i++) {
+        sibPeak = Math.max(sibPeak, Math.abs(this.fallbackSibData[i]));
+      }
+      for (let i = 0; i < this.fallbackBroadData.length; i++) {
+        broadPeak = Math.max(broadPeak, Math.abs(this.fallbackBroadData[i]));
+      }
+
+      const p = this.normalizedParams();
+      const sibTau = sibPeak > this.fallbackSibEnvelope ? p.attack / 1000 : p.release / 1000;
+      const broadTau = broadPeak > this.fallbackBroadEnvelope ? 0.0015 : 0.075;
+      const sibAlpha = 1 - Math.exp(-intervalSeconds / Math.max(0.0005, sibTau));
+      const broadAlpha = 1 - Math.exp(-intervalSeconds / Math.max(0.0005, broadTau));
+      this.fallbackSibEnvelope += (sibPeak - this.fallbackSibEnvelope) * sibAlpha;
+      this.fallbackBroadEnvelope += (broadPeak - this.fallbackBroadEnvelope) * broadAlpha;
+
+      this.rawSibilanceDb = gainToDb(this.fallbackSibEnvelope);
+      this.broadbandDb = gainToDb(this.fallbackBroadEnvelope);
+      this.prominenceDb = this.rawSibilanceDb - this.broadbandDb;
+
+      const detectionNorm = p.detection / 100;
+      const prominenceThresholdDb = -8 - detectionNorm * 22;
+      const absoluteGateDb = p.threshold - (4 + detectionNorm * 18);
+      const levelExcess = this.rawSibilanceDb - absoluteGateDb;
+      const prominenceExcess = this.prominenceDb - prominenceThresholdDb;
+      this.triggerExcessDb = Math.max(0, Math.min(levelExcess, prominenceExcess + 6));
+
+      const targetReductionDb = this.triggerExcessDb > 0
+        ? p.amountDb * (1 - Math.exp(-this.triggerExcessDb / 5))
+        : 0;
+      const reductionTau = targetReductionDb > this.reductionDb
+        ? Math.max(0.0005, (p.attack / 1000) * 0.55)
+        : Math.max(0.012, (p.release / 1000) * 0.8);
+      const reductionAlpha = 1 - Math.exp(-intervalSeconds / reductionTau);
+      this.reductionDb += (targetReductionDb - this.reductionDb) * reductionAlpha;
+      this.detectorDb = absoluteGateDb + this.triggerExcessDb;
+
+      const now = this.raw.currentTime;
+      if (p.mode === 1) {
+        // Wide: sidechain triggers broadband attenuation.
+        this.fallbackShelf.gain.setTargetAtTime(0, now, 0.006);
+        this.fallbackWideGain.gain.setTargetAtTime(dbToGain(-this.reductionDb), now, 0.006);
+      } else {
+        // Split: sidechain triggers a subtractive high shelf on the ONE main path.
+        this.fallbackShelf.gain.setTargetAtTime(-this.reductionDb, now, 0.006);
+        this.fallbackWideGain.gain.setTargetAtTime(1, now, 0.006);
+      }
+    }, Math.round(intervalSeconds * 1000));
   }
 
   getReductionDb() {
-    if (this.fallbackCompressor) {
-      this.reductionDb = Math.max(0, -(this.fallbackCompressor.reduction || 0));
-    }
     return this.reductionDb;
   }
 
   getTelemetry(): DeEsserTelemetry {
     return {
-      reductionDb: this.getReductionDb(),
+      reductionDb: this.reductionDb,
       detectorDb: this.detectorDb,
       rawSibilanceDb: this.rawSibilanceDb,
       broadbandDb: this.broadbandDb,
@@ -349,6 +492,15 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
   dispose(): this {
     if (this.disposedInternal) return this;
     this.disposedInternal = true;
+
+    if (this.activationTimer) {
+      clearTimeout(this.activationTimer);
+      this.activationTimer = null;
+    }
+    if (this.fallbackTimer) {
+      clearInterval(this.fallbackTimer);
+      this.fallbackTimer = null;
+    }
 
     DeEsserNode.instances.delete(this);
     if (DeEsserNode.lastActiveInstance === this) {
@@ -363,10 +515,17 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
 
     this.fallbackNodes.forEach((node) => { try { node.disconnect(); } catch {} });
     this.fallbackNodes = [];
-    this.fallbackFilters = [];
-    this.fallbackCompressor = null;
+    this.fallbackDetectorFilters = [];
+    this.fallbackShelf = null;
+    this.fallbackWideGain = null;
+    this.fallbackMainRouteGain = null;
+    this.fallbackListenRouteGain = null;
+    this.fallbackSibAnalyser = null;
+    this.fallbackBroadAnalyser = null;
+    this.fallbackSibData = null;
+    this.fallbackBroadData = null;
 
-    try { this.dryGain.dispose(); } catch {}
+    this.disconnectStartupDryPath();
     try { this.processedGain.dispose(); } catch {}
 
     super.dispose();
