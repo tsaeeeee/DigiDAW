@@ -135,8 +135,8 @@ export function SaturatorModal({
         const y = (1 - (curve[i] + 1) / 2) * h;
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      ctx.strokeStyle = isBypassed ? '#666' : '#e879f9';
-      ctx.shadowColor = isBypassed ? 'transparent' : 'rgba(232,121,249,0.55)';
+      ctx.strokeStyle = isBypassed ? '#666' : '#f97316';
+      ctx.shadowColor = isBypassed ? 'transparent' : 'rgba(249,115,22,0.55)';
       ctx.shadowBlur = isBypassed ? 0 : 7;
       ctx.lineWidth = 2.4;
       ctx.stroke();
@@ -154,7 +154,7 @@ export function SaturatorModal({
       if (!isBypassed && inputDb > -60) {
         const norm = Math.max(0, Math.min(1, (inputDb + 60) / 60));
         const index = Math.min(curve.length - 1, Math.round(norm * (curve.length - 1)));
-        ctx.fillStyle = '#f9a8d4';
+        ctx.fillStyle = '#fb7185';
         ctx.beginPath();
         ctx.arc(norm * w, (1 - (curve[index] + 1) / 2) * h, 4, 0, Math.PI * 2);
         ctx.fill();
@@ -162,7 +162,7 @@ export function SaturatorModal({
 
       ctx.fillStyle = '#777';
       ctx.font = '9px monospace';
-      ctx.fillText(`${currentMode.toUpperCase()} · DRIVE x${driveAmt.toFixed(2)}`, 8, 14);
+      ctx.fillText(`${currentMode} · Drive x${driveAmt.toFixed(2)}`, 8, 14);
       frame = requestAnimationFrame(draw);
     };
     draw();
@@ -208,9 +208,9 @@ export function SaturatorModal({
               key={mode}
               type="button"
               onClick={() => updateParam('modeIndex', index)}
-              className={cn('px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider border transition-all', modeIndex === index ? 'bg-gradient-to-r from-[#f472b6] to-[#e879f9] border-[#f472b6] text-black shadow-[0_0_8px_rgba(244,114,182,0.35)]' : 'bg-[#111114] border-[#2d2d38] text-[#777] hover:text-white')}
+              className={cn('px-4 py-1.5 rounded-full text-[9px] font-black tracking-wider border transition-all', modeIndex === index ? 'bg-gradient-to-r from-[#f472b6] to-[#e879f9] border-[#f472b6] text-black shadow-[0_0_8px_rgba(244,114,182,0.35)]' : 'bg-[#111114] border-[#2d2d38] text-[#777] hover:text-white')}
             >
-              {mode}
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
             </button>
           ))}
         </div>
