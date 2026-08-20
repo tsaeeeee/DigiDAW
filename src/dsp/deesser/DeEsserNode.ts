@@ -193,7 +193,7 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
       highFreq,
       threshold: clamp(this.params.threshold ?? -28, -60, -4),
       detection: clamp(this.params.detection ?? 65, 0, 100),
-      amountDb: clamp(this.params.amountDb ?? legacyAmount || 8, 0, 18),
+      amountDb: clamp(this.params.amountDb ?? legacyAmount, 0, 18),
       attack: clamp(this.params.attack ?? 3, 0.5, 50),
       release: clamp(this.params.release ?? 80, 10, 500),
       listen: (this.params.listen ?? 0) === 1 ? 1 : 0,
