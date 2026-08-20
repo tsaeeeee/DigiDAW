@@ -145,7 +145,7 @@ export function CompressorModal({
       }
 
       const thresholdY = Math.max(0, Math.min(h, ((0 - threshold) / 60) * h));
-      ctx.strokeStyle = '#e879f9';
+      ctx.strokeStyle = '#fb923c';
       ctx.beginPath(); ctx.moveTo(0, thresholdY); ctx.lineTo(w, thresholdY); ctx.stroke();
 
       ctx.beginPath();
@@ -164,7 +164,7 @@ export function CompressorModal({
         const y = 8 + Math.min(1, item.gr / 24) * (h - 16);
         if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       });
-      ctx.strokeStyle = '#f472b6';
+      ctx.strokeStyle = '#fdba74';
       ctx.lineWidth = 2;
       ctx.stroke();
 
