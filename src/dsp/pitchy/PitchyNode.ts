@@ -20,38 +20,64 @@ export interface PitchyTelemetry {
   rms: number;
   pitchRatio: number;
   confidence: number;
+  correctionCents: number;
+  backend: 'loading' | 'worklet' | 'tone-fallback';
+}
+
+type PitchBackend = PitchyTelemetry['backend'];
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function median(values: number[]) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 /**
- * Realtime chromatic pitch-correction node.
+ * Realtime chromatic vocal pitch correction.
  *
- * The current audio transform still uses Tone.PitchShift, but the control
- * engine is deliberately more vocal-oriented than a raw nearest-note snap:
- * - YIN fundamental estimation
- * - octave-jump rejection
- * - time-constant pitch smoothing
- * - slower pitch-centre tracking to preserve vibrato
- * - target-note hysteresis + candidate confirmation
- * - sustained-note Humanize behaviour
- * - time-based retune speed / transition
- * - short voiced/unvoiced wet crossfades so consonants are not hard-tuned
+ * Controller:
+ * - YIN fundamental estimation with confidence gating
+ * - short median/outlier protection
+ * - octave-error confirmation instead of unconditional octave wrapping
+ * - note-target hysteresis + confirmation
+ * - a separate target-guide glide for musical note transitions
+ * - vibrato preservation / sustained-note humanize
+ * - confidence-weighted correction and an unvoiced hold/release
  *
- * This keeps the existing DigiDAW graph contract while making Pitchy much less
- * susceptible to one-frame detector mistakes and zippery note transitions.
+ * Transform:
+ * - preferred: DigiDAW AudioWorklet continuous overlap-add shifter
+ * - fallback: Tone.PitchShift only when AudioWorklet cannot be loaded
+ *
+ * The worklet is important: Tone.PitchShift's public pitch setter reconfigures
+ * delay-LFO ranges/frequency whenever the interval changes. A tuner updates the
+ * correction many times per second, so that architecture can create zipper,
+ * sign-change and grain-reset artifacts. The worklet instead changes read-head
+ * velocity continuously in the audio thread and crosses correction zero without
+ * rebuilding the delay sweep.
  */
 export class PitchyNode extends Tone.ToneAudioNode<any> {
   readonly name = 'PitchyNode';
 
   public static lastActiveInstance: PitchyNode | null = null;
   public static instances: Set<PitchyNode> = new Set();
+  private static workletLoads = new WeakMap<BaseAudioContext, Promise<void>>();
 
   public readonly input: Tone.Gain;
   public readonly output: Tone.Gain;
   public readonly inputNode: Tone.Gain;
   public readonly outputNode: Tone.Gain;
 
-  private pitchShift: Tone.PitchShift;
   private colorFilter: Tone.Filter;
+  private startupDryGain: Tone.Gain;
+  private correctedGain: Tone.Gain;
+  private workletNode: AudioWorkletNode | null = null;
+  private fallbackPitchShift: Tone.PitchShift | null = null;
+  private backend: PitchBackend = 'loading';
+
   private analyser: AnalyserNode;
   private analysisData: Float32Array;
   private downsampled: Float32Array;
@@ -79,13 +105,18 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
   private stableTargetMidi: number | null = null;
   private candidateTargetMidi: number | null = null;
   private candidateTargetFrames = 0;
+  private targetGuideMidi: number | null = null;
+
   private smoothedMidi: number | null = null;
   private pitchCenterMidi: number | null = null;
-  private previousMeasuredMidi: number | null = null;
+  private measuredHistory: number[] = [];
+
+  private octaveCandidateMidi: number | null = null;
+  private octaveCandidateFrames = 0;
+
   private lastVoicedAt = -Infinity;
   private noteStartedAt = -Infinity;
   private lastAnalysisAt = -Infinity;
-  private wetVoiceState = true;
 
   constructor(options: PitchyOptions = {}) {
     super();
@@ -97,68 +128,175 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
     this.input = this.inputNode;
     this.output = this.outputNode;
 
-    this.pitchShift = new Tone.PitchShift({
-      context: this.context,
-      pitch: 0,
-      windowSize: 0.05,
-      delayTime: 0,
-      feedback: 0,
-      wet: 1,
-    });
-
+    // Keep one common tonal stage after either the worklet or fallback path.
+    // Color is intentionally subtle: this is a tuner, not an exciter.
     this.colorFilter = new Tone.Filter({
       context: this.context,
-      type: 'peaking',
-      frequency: 3200,
-      Q: 0.8,
+      type: 'highshelf',
+      frequency: 4800,
+      Q: 0.7,
       gain: 0,
     });
 
-    this.inputNode.chain(this.pitchShift, this.colorFilter, this.outputNode);
+    // AudioWorklet module loading is asynchronous. Until it is ready, pass the
+    // vocal through cleanly; then crossfade once into the corrected path.
+    this.startupDryGain = new Tone.Gain({ context: this.context, gain: 1 });
+    this.correctedGain = new Tone.Gain({ context: this.context, gain: 0 });
 
-    // A longer capture window makes low male fundamentals considerably more
-    // stable while the YIN pass itself still operates on a decimated copy.
+    this.inputNode.connect(this.startupDryGain);
+    this.startupDryGain.connect(this.colorFilter);
+    this.correctedGain.connect(this.colorFilter);
+    this.colorFilter.connect(this.outputNode);
+
     this.analyser = this.rawCtx.createAnalyser();
     this.analyser.fftSize = 4096;
     this.analyser.smoothingTimeConstant = 0;
     this.analysisData = new Float32Array(this.analyser.fftSize);
     this.downsampled = new Float32Array(this.analysisData.length);
-    this.yinBuffer = new Float32Array(1024);
+    this.yinBuffer = new Float32Array(2048);
 
     const nativeInput = this.inputNode.input as AudioNode;
     nativeInput.connect(this.analyser);
 
     this.update(options);
     this.startAnalysis();
+    void this.initializePitchBackend();
 
     PitchyNode.instances.add(this);
     PitchyNode.lastActiveInstance = this;
+  }
+
+  private static getWorkletUrl() {
+    const base = (((import.meta as any).env?.BASE_URL as string | undefined) || '/');
+    const normalized = base.endsWith('/') ? base : `${base}/`;
+    return `${normalized}dsp/ditune-pitch-processor.js`;
+  }
+
+  private static ensureWorklet(context: BaseAudioContext) {
+    const audioWorklet = (context as BaseAudioContext & { audioWorklet?: AudioWorklet }).audioWorklet;
+    if (!audioWorklet || typeof AudioWorkletNode === 'undefined') {
+      return Promise.reject(new Error('AudioWorklet is unavailable'));
+    }
+
+    const existing = PitchyNode.workletLoads.get(context);
+    if (existing) return existing;
+
+    const load = audioWorklet
+      .addModule(PitchyNode.getWorkletUrl())
+      .catch((error) => {
+        PitchyNode.workletLoads.delete(context);
+        throw error;
+      });
+
+    PitchyNode.workletLoads.set(context, load);
+    return load;
+  }
+
+  private async initializePitchBackend() {
+    // Pitch detection is wall-clock controlled, so offline correction is still
+    // intentionally left to the documented fallback limitation.
+    const isOffline = typeof OfflineAudioContext !== 'undefined' && this.rawCtx instanceof OfflineAudioContext;
+
+    if (!isOffline) {
+      try {
+        await PitchyNode.ensureWorklet(this.rawCtx);
+        if (this.isDisposedInternal) return;
+
+        const node = new AudioWorkletNode(this.rawCtx, 'ditune-pitch-correction', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          channelCount: 2,
+          channelCountMode: 'explicit',
+          channelInterpretation: 'speakers',
+          parameterData: {
+            semitones: this.currentShiftSemitones,
+            windowMs: this.mode === 'hq' ? 72 : 52,
+          },
+        });
+
+        this.workletNode = node;
+        this.backend = 'worklet';
+
+        Tone.connect(this.inputNode, node);
+        Tone.connect(node, this.correctedGain);
+        this.updateWorkletWindow();
+        this.pushPitchShiftValue();
+        this.fadeToCorrectedPath();
+        return;
+      } catch (error) {
+        console.warn('Ditune AudioWorklet unavailable; using Tone.PitchShift fallback.', error);
+      }
+    }
+
+    if (this.isDisposedInternal) return;
+
+    const fallback = new Tone.PitchShift({
+      context: this.context,
+      pitch: this.currentShiftSemitones,
+      windowSize: this.mode === 'hq' ? 0.09 : 0.065,
+      delayTime: 0,
+      feedback: 0,
+      wet: 1,
+    });
+
+    this.fallbackPitchShift = fallback;
+    this.backend = 'tone-fallback';
+
+    this.inputNode.connect(fallback);
+    fallback.connect(this.correctedGain);
+    this.fadeToCorrectedPath();
+  }
+
+  private fadeToCorrectedPath() {
+    try {
+      this.startupDryGain.gain.rampTo(0, 0.035);
+      this.correctedGain.gain.rampTo(1, 0.035);
+    } catch {
+      this.startupDryGain.gain.value = 0;
+      this.correctedGain.gain.value = 1;
+    }
   }
 
   public update(options: PitchyOptions) {
     const previousMode = this.mode;
 
     if (options.referenceHz !== undefined) {
-      this.referenceHz = Math.max(415, Math.min(466, options.referenceHz));
+      this.referenceHz = clamp(options.referenceHz, 415, 466);
     }
-    if (options.speed !== undefined) this.speed = Math.max(0, Math.min(100, options.speed));
-    if (options.humanize !== undefined) this.humanize = Math.max(0, Math.min(100, options.humanize));
-    if (options.transition !== undefined) this.transition = Math.max(0, Math.min(100, options.transition));
+    if (options.speed !== undefined) this.speed = clamp(options.speed, 0, 100);
+    if (options.humanize !== undefined) this.humanize = clamp(options.humanize, 0, 100);
+    if (options.transition !== undefined) this.transition = clamp(options.transition, 0, 100);
     if (options.mode !== undefined) this.mode = options.mode;
 
     if (options.color !== undefined) {
-      this.color = Math.max(0, Math.min(100, options.color));
-      this.colorFilter.gain.value = (this.color - 50) * 0.16;
-      this.colorFilter.frequency.value = 1400 + (this.color / 100) * 3600;
+      this.color = clamp(options.color, 0, 100);
+      this.colorFilter.frequency.value = 4800;
+      this.colorFilter.gain.value = (this.color - 50) * 0.06;
     }
 
-    // Tone.PitchShift gets grainier with very small windows. These values trade
-    // a little more latency for a noticeably smoother sustained vocal.
-    this.pitchShift.windowSize = this.mode === 'hq' ? 0.08 : 0.05;
+    if (this.fallbackPitchShift) {
+      this.fallbackPitchShift.windowSize = this.mode === 'hq' ? 0.09 : 0.065;
+    }
+    this.updateWorkletWindow();
 
     if (previousMode !== this.mode && this.analysisTimer) {
       this.startAnalysis();
     }
+  }
+
+  private updateWorkletWindow() {
+    if (!this.workletNode) return;
+    const parameter = this.workletNode.parameters.get('windowMs');
+    if (!parameter) return;
+    const now = this.rawCtx.currentTime;
+    const value = this.mode === 'hq' ? 72 : 52;
+    try {
+      parameter.cancelAndHoldAtTime(now);
+    } catch {
+      parameter.cancelScheduledValues(now);
+    }
+    parameter.setTargetAtTime(value, now, 0.035);
   }
 
   private startAnalysis() {
@@ -167,62 +305,83 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
       this.analysisTimer = null;
     }
 
-    // Faster control updates improve retune smoothness. The expensive YIN loop
-    // remains downsampled so this stays practical for browser playback.
-    const intervalMs = this.mode === 'hq' ? 32 : 24;
+    const intervalMs = this.mode === 'hq' ? 32 : 22;
     this.analysisTimer = setInterval(() => this.analysePitch(), intervalMs);
   }
 
-  private analysisDeltaSeconds(now: number): number {
-    const fallback = this.mode === 'hq' ? 0.032 : 0.024;
+  private analysisDeltaSeconds(now: number) {
+    const fallback = this.mode === 'hq' ? 0.032 : 0.022;
     if (!Number.isFinite(this.lastAnalysisAt) || this.lastAnalysisAt < 0) {
       this.lastAnalysisAt = now;
       return fallback;
     }
-    const delta = Math.max(0.008, Math.min(0.08, now - this.lastAnalysisAt));
+    const delta = clamp(now - this.lastAnalysisAt, 0.008, 0.08);
     this.lastAnalysisAt = now;
     return delta;
   }
 
-  private alphaForTimeConstant(deltaSeconds: number, timeConstantSeconds: number): number {
+  private alphaForTimeConstant(deltaSeconds: number, timeConstantSeconds: number) {
     const tau = Math.max(0.001, timeConstantSeconds);
-    return Math.max(0, Math.min(1, 1 - Math.exp(-deltaSeconds / tau)));
+    return clamp(1 - Math.exp(-deltaSeconds / tau), 0, 1);
   }
 
-  private unwrapOctaveJump(measuredMidi: number): number {
-    const previous = this.previousMeasuredMidi;
-    if (previous === null || !Number.isFinite(previous)) {
-      this.previousMeasuredMidi = measuredMidi;
+  /**
+   * A single harmonic mistake should not kick a vocal by an octave, but a real
+   * octave leap must eventually pass. Require three consistent frames before
+   * accepting an octave-sized discontinuity.
+   */
+  private protectOctaveOutlier(measuredMidi: number) {
+    const reference = this.smoothedMidi;
+    if (reference === null) return measuredMidi;
+
+    const delta = measuredMidi - reference;
+    if (Math.abs(delta) < 9.5 || Math.abs(delta) > 14.5) {
+      this.octaveCandidateMidi = null;
+      this.octaveCandidateFrames = 0;
       return measuredMidi;
     }
 
-    let candidate = measuredMidi;
-    while (candidate - previous > 7) candidate -= 12;
-    while (previous - candidate > 7) candidate += 12;
-
-    this.previousMeasuredMidi = candidate;
-    return candidate;
-  }
-
-  private setVoicedWetState(voiced: boolean) {
-    if (this.wetVoiceState === voiced) return;
-    this.wetVoiceState = voiced;
-
-    // The built-in wet control gives a short crossfade around consonants and
-    // breath noise instead of abruptly forcing an old pitch correction onto
-    // unvoiced material. Twelve milliseconds is short enough not to pump.
-    try {
-      this.pitchShift.wet.rampTo(voiced ? 1 : 0, 0.012);
-    } catch {
-      this.pitchShift.wet.value = voiced ? 1 : 0;
+    const folded = measuredMidi - Math.sign(delta) * 12;
+    if (Math.abs(folded - reference) > 2.2) {
+      this.octaveCandidateMidi = null;
+      this.octaveCandidateFrames = 0;
+      return measuredMidi;
     }
+
+    if (
+      this.octaveCandidateMidi !== null &&
+      Math.abs(measuredMidi - this.octaveCandidateMidi) < 0.6
+    ) {
+      this.octaveCandidateFrames += 1;
+      this.octaveCandidateMidi =
+        this.octaveCandidateMidi + (measuredMidi - this.octaveCandidateMidi) * 0.35;
+    } else {
+      this.octaveCandidateMidi = measuredMidi;
+      this.octaveCandidateFrames = 1;
+    }
+
+    if (this.octaveCandidateFrames >= 3) {
+      this.octaveCandidateMidi = null;
+      this.octaveCandidateFrames = 0;
+      return measuredMidi;
+    }
+
+    return folded;
   }
 
-  private updateStableTarget(centerMidi: number, now: number) {
+  private robustMeasuredMidi(measuredMidi: number) {
+    const protectedMidi = this.protectOctaveOutlier(measuredMidi);
+    this.measuredHistory.push(protectedMidi);
+    if (this.measuredHistory.length > 3) this.measuredHistory.shift();
+    return median(this.measuredHistory);
+  }
+
+  private updateStableTarget(centerMidi: number, now: number, confidence: number) {
     const nearestMidi = Math.round(centerMidi);
 
     if (this.stableTargetMidi === null) {
       this.stableTargetMidi = nearestMidi;
+      this.targetGuideMidi = nearestMidi;
       this.candidateTargetMidi = null;
       this.candidateTargetFrames = 0;
       this.noteStartedAt = now;
@@ -235,20 +394,15 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
       return;
     }
 
-    const distanceFromCurrent = Math.abs(centerMidi - this.stableTargetMidi);
-    if (distanceFromCurrent < 0.62) {
-      this.candidateTargetMidi = null;
-      this.candidateTargetFrames = 0;
-      return;
-    }
+    const direction = nearestMidi > this.stableTargetMidi ? 1 : -1;
+    const distancePastCurrent = (centerMidi - this.stableTargetMidi) * direction;
 
-    // A genuine large interval is allowed through quickly. Boundary crossings
-    // around vibrato or noisy consonants need two consecutive confirmations.
-    if (distanceFromCurrent >= 1.15) {
-      this.stableTargetMidi = nearestMidi;
+    // A little more hysteresis at high Humanize keeps vibrato near a semitone
+    // boundary from repeatedly changing the target note.
+    const switchThreshold = 0.56 + (this.humanize / 100) * 0.08;
+    if (distancePastCurrent < switchThreshold) {
       this.candidateTargetMidi = null;
       this.candidateTargetFrames = 0;
-      this.noteStartedAt = now;
       return;
     }
 
@@ -259,12 +413,30 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
       this.candidateTargetFrames = 1;
     }
 
-    if (this.candidateTargetFrames >= 2) {
-      this.stableTargetMidi = nearestMidi;
-      this.candidateTargetMidi = null;
-      this.candidateTargetFrames = 0;
-      this.noteStartedAt = now;
+    const requiredFrames = confidence >= 0.82 ? 2 : 3;
+    if (this.candidateTargetFrames < requiredFrames) return;
+
+    this.stableTargetMidi = nearestMidi;
+    this.candidateTargetMidi = null;
+    this.candidateTargetFrames = 0;
+    this.noteStartedAt = now;
+
+    if (this.targetGuideMidi === null) this.targetGuideMidi = nearestMidi;
+  }
+
+  private advanceTargetGuide(deltaSeconds: number) {
+    if (this.stableTargetMidi === null) return null;
+    if (this.targetGuideMidi === null) this.targetGuideMidi = this.stableTargetMidi;
+
+    const transitionNorm = this.transition / 100;
+    const glideSeconds = 0.004 + Math.pow(transitionNorm, 1.7) * 0.22;
+    const alpha = this.alphaForTimeConstant(deltaSeconds, glideSeconds);
+    this.targetGuideMidi += (this.stableTargetMidi - this.targetGuideMidi) * alpha;
+
+    if (Math.abs(this.targetGuideMidi - this.stableTargetMidi) < 0.0005) {
+      this.targetGuideMidi = this.stableTargetMidi;
     }
+    return this.targetGuideMidi;
   }
 
   private analysePitch() {
@@ -280,8 +452,6 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
     for (let i = 0; i < source.length; i++) mean += source[i];
     mean /= source.length;
 
-    // AC RMS is more useful for voiced detection than raw RMS when a DC offset
-    // or asymmetric saturator exists earlier in the insert chain.
     let acSumSq = 0;
     for (let i = 0; i < source.length; i++) {
       const centered = source[i] - mean;
@@ -292,7 +462,7 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
     this.currentRms = rms;
 
     if (rms < 0.0035) {
-      this.handleUnvoiced(true);
+      this.handleUnvoiced(true, deltaSeconds);
       return;
     }
 
@@ -301,8 +471,6 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
     const downLength = Math.floor(source.length / downsampleFactor);
     const down = this.downsampled;
 
-    // Box-average decimation removes enough upper-band content to make the YIN
-    // difference function less likely to lock onto a bright harmonic.
     for (let i = 0; i < downLength; i++) {
       const base = i * downsampleFactor;
       let sum = 0;
@@ -314,7 +482,7 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
 
     const effectiveRate = sampleRate / downsampleFactor;
     const minHz = 55;
-    const maxHz = 1100;
+    const maxHz = 1050;
     const minTau = Math.max(2, Math.floor(effectiveRate / maxHz));
     const maxTau = Math.min(
       Math.floor(effectiveRate / minHz),
@@ -323,15 +491,13 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
     );
 
     if (maxTau <= minTau + 2) {
-      this.handleUnvoiced(false);
+      this.handleUnvoiced(false, deltaSeconds);
       return;
     }
 
     const yin = this.yinBuffer;
     yin.fill(0, 0, maxTau + 2);
 
-    // Use one fixed comparison window for every lag. This avoids favouring long
-    // lags simply because they have fewer samples contributing to the error.
     const comparisonLength = downLength - maxTau - 1;
     for (let tau = 1; tau <= maxTau + 1; tau++) {
       let difference = 0;
@@ -342,7 +508,6 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
       yin[tau] = difference;
     }
 
-    // Cumulative mean normalised difference (the core YIN step).
     yin[0] = 1;
     let runningSum = 0;
     for (let tau = 1; tau <= maxTau + 1; tau++) {
@@ -350,20 +515,17 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
       yin[tau] = runningSum > 1e-12 ? (yin[tau] * tau) / runningSum : 1;
     }
 
-    const threshold = this.mode === 'hq' ? 0.14 : 0.18;
+    const threshold = this.mode === 'hq' ? 0.12 : 0.16;
     let tauEstimate = -1;
 
-    // Pick the first convincing valley rather than the global best harmonic.
     for (let tau = minTau; tau <= maxTau; tau++) {
       if (yin[tau] < threshold) {
-        while (tau + 1 <= maxTau && yin[tau + 1] < yin[tau]) tau++;
+        while (tau + 1 <= maxTau && yin[tau + 1] < yin[tau]) tau += 1;
         tauEstimate = tau;
         break;
       }
     }
 
-    // Some breathy/raspy vocals never cross the strict threshold. Accept a
-    // clear global valley, but reject genuinely ambiguous frames.
     if (tauEstimate < 0) {
       let bestTau = minTau;
       let bestValue = yin[minTau];
@@ -373,16 +535,15 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
           bestTau = tau;
         }
       }
-      if (bestValue <= 0.32) tauEstimate = bestTau;
+      if (bestValue <= 0.28) tauEstimate = bestTau;
     }
 
     if (tauEstimate < 0) {
-      this.confidence *= 0.8;
-      this.handleUnvoiced(false);
+      this.confidence *= 0.82;
+      this.handleUnvoiced(false, deltaSeconds);
       return;
     }
 
-    // Sub-sample parabolic interpolation around the YIN minimum.
     let refinedTau = tauEstimate;
     if (tauEstimate > 1 && tauEstimate < maxTau) {
       const left = yin[tauEstimate - 1];
@@ -396,32 +557,33 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
 
     const pitchHz = effectiveRate / refinedTau;
     if (!Number.isFinite(pitchHz) || pitchHz < minHz || pitchHz > maxHz) {
-      this.handleUnvoiced(false);
+      this.handleUnvoiced(false, deltaSeconds);
       return;
     }
 
-    const confidence = Math.max(0, Math.min(1, 1 - yin[tauEstimate]));
-    if (confidence < 0.55) {
+    const confidence = clamp(1 - yin[tauEstimate], 0, 1);
+
+    // A recently voiced note gets a short confidence hold through soft
+    // consonants. New/ambiguous material must cross a stricter threshold.
+    const recentlyVoiced = now - this.lastVoicedAt < 0.085;
+    const minConfidence = recentlyVoiced ? 0.54 : 0.62;
+    if (confidence < minConfidence) {
       this.confidence = confidence;
-      this.handleUnvoiced(false);
+      this.handleUnvoiced(false, deltaSeconds);
       return;
     }
 
     let measuredMidi = 69 + 12 * Math.log2(pitchHz / this.referenceHz);
-    measuredMidi = this.unwrapOctaveJump(measuredMidi);
+    measuredMidi = this.robustMeasuredMidi(measuredMidi);
 
-    // Fast smoothing removes frame-level jitter while retaining musical motion.
-    const fastTau = this.mode === 'hq' ? 0.045 : 0.032;
+    const fastTau = this.mode === 'hq' ? 0.042 : 0.028;
     const fastAlpha = this.alphaForTimeConstant(deltaSeconds, fastTau);
     this.smoothedMidi = this.smoothedMidi === null
       ? measuredMidi
       : this.smoothedMidi + (measuredMidi - this.smoothedMidi) * fastAlpha;
 
-    // A slower centre line separates note centre from vibrato. Correction is
-    // calculated mostly from this centre when Humanize is raised, so the singer
-    // keeps natural oscillation instead of the tuner fighting every vibrato arc.
     const humanizeNorm = this.humanize / 100;
-    const centerTau = 0.09 + humanizeNorm * 0.09;
+    const centerTau = 0.075 + humanizeNorm * 0.13;
     const centerAlpha = this.alphaForTimeConstant(deltaSeconds, centerTau);
     this.pitchCenterMidi = this.pitchCenterMidi === null
       ? this.smoothedMidi
@@ -430,53 +592,66 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
     const continuousMidi = this.smoothedMidi;
     const centerMidi = this.pitchCenterMidi;
 
-    this.updateStableTarget(centerMidi, now);
-    if (this.stableTargetMidi === null) {
-      this.handleUnvoiced(false);
+    this.updateStableTarget(centerMidi, now, confidence);
+    const guideMidi = this.advanceTargetGuide(deltaSeconds);
+    if (guideMidi === null || this.stableTargetMidi === null) {
+      this.handleUnvoiced(false, deltaSeconds);
       return;
     }
 
-    const targetMidi = this.stableTargetMidi;
-    const targetHz = this.referenceHz * Math.pow(2, (targetMidi - 69) / 12);
-    const noteClass = ((targetMidi % 12) + 12) % 12;
+    const stableTarget = this.stableTargetMidi;
+    const targetHz = this.referenceHz * Math.pow(2, (stableTarget - 69) / 12);
+    const noteClass = ((stableTarget % 12) + 12) % 12;
 
     const noteAge = Number.isFinite(this.noteStartedAt) && this.noteStartedAt >= 0
       ? Math.max(0, now - this.noteStartedAt)
       : 0;
-    const sustainRamp = Math.max(0, Math.min(1, (noteAge - 0.16) / 0.38));
+    const sustainRamp = clamp((noteAge - 0.12) / 0.42, 0, 1);
 
-    // Humanize acts primarily on sustained material: attacks still lock quickly,
-    // while held notes retain more vibrato and small expressive movement.
+    // Separate vibrato from the note centre. At high Humanize, the output keeps
+    // more of that deviation instead of pinning every vibrato cycle flat.
     const vibratoDeviation = continuousMidi - centerMidi;
-    const vibratoPreserve = humanizeNorm * (0.35 + sustainRamp * 0.65);
-    const correctionReferenceMidi = centerMidi + vibratoDeviation * (1 - vibratoPreserve);
-    let correction = targetMidi - correctionReferenceMidi;
+    const vibratoPreserve = humanizeNorm * (0.25 + sustainRamp * 0.75);
+    const correctionReferenceMidi =
+      centerMidi + vibratoDeviation * (1 - vibratoPreserve);
 
-    // Humanize also supplies a gentle Flex-like soft zone around the note centre.
-    // A singer already close to target is not constantly pulled dead-centre.
-    const flexZone = 0.025 + humanizeNorm * (0.08 + sustainRamp * 0.16);
+    let correction = guideMidi - correctionReferenceMidi;
+
+    // Soft dead-band around centre. This is one of the biggest differences
+    // between natural correction and a constantly moving robotic pitch servo.
+    const deadBand = 0.012 + humanizeNorm * (0.025 + sustainRamp * 0.085);
     const absCorrection = Math.abs(correction);
-    if (flexZone > 0 && absCorrection < flexZone) {
-      const x = Math.max(0, Math.min(1, absCorrection / flexZone));
-      const smoothStep = x * x * (3 - 2 * x);
-      correction *= smoothStep;
+    if (absCorrection < deadBand) {
+      const x = clamp(absCorrection / Math.max(0.0001, deadBand), 0, 1);
+      correction *= x * x * (3 - 2 * x);
     }
+
+    // Low-confidence periodic frames are useful for tracking, but they should
+    // not be allowed to pull the transform with full authority.
+    const confidenceStrength = clamp((confidence - 0.54) / 0.22, 0, 1);
+
+    // Preserve a little more of the consonant/onset edge at high Humanize.
+    const attackWindow = 0.018 + humanizeNorm * 0.07;
+    const attackProgress = clamp(noteAge / Math.max(0.005, attackWindow), 0, 1);
+    const attackStrength = 1 - humanizeNorm * 0.55 * (1 - attackProgress);
+
+    correction *= confidenceStrength * attackStrength;
 
     this.detectedHz = pitchHz;
     this.targetHz = targetHz;
     this.closestNoteName = NOTE_NAMES[noteClass] || 'C';
-    this.centsDeviation = Math.max(-50, Math.min(50, Math.round((targetMidi - continuousMidi) * 100)));
+    this.centsDeviation = clamp(Math.round((stableTarget - continuousMidi) * 100), -50, 50);
     this.isTracking = true;
     this.confidence = confidence;
     this.lastVoicedAt = now;
-    this.setVoicedWetState(true);
 
-    this.applyPitchShift(correction, deltaSeconds, noteAge, confidence);
+    this.applyPitchShift(correction, deltaSeconds, noteAge);
   }
 
-  private handleUnvoiced(resetFrequency: boolean) {
+  private handleUnvoiced(resetFrequency: boolean, deltaSeconds: number) {
     const now = this.rawCtx.currentTime;
     this.isTracking = false;
+    this.confidence *= 0.88;
 
     if (resetFrequency) {
       this.detectedHz = 0;
@@ -485,65 +660,89 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
 
     const elapsed = now - this.lastVoicedAt;
 
-    // Tiny consonant gaps keep the previous correction; this avoids rapidly
-    // toggling the shifter during normal syllables. Longer unvoiced regions are
-    // crossfaded to the internal dry path to avoid pitch-shifting sibilance.
-    if (elapsed < 0.065) return;
-    this.setVoicedWetState(false);
+    // Hold through short consonants. After that, release correction toward zero
+    // while keeping the same latency-matched processing path; never toggle wet
+    // against an undelayed dry signal mid-word.
+    if (elapsed >= 0.07) {
+      const releaseAlpha = this.alphaForTimeConstant(deltaSeconds, 0.045);
+      this.currentShiftSemitones += (0 - this.currentShiftSemitones) * releaseAlpha;
+      if (Math.abs(this.currentShiftSemitones) < 0.001) this.currentShiftSemitones = 0;
+      this.pushPitchShiftValue();
+    }
 
-    if (elapsed < 0.18) return;
+    if (elapsed < 0.22) return;
 
     this.stableTargetMidi = null;
     this.candidateTargetMidi = null;
     this.candidateTargetFrames = 0;
+    this.targetGuideMidi = null;
     this.smoothedMidi = null;
     this.pitchCenterMidi = null;
-    this.previousMeasuredMidi = null;
+    this.measuredHistory = [];
+    this.octaveCandidateMidi = null;
+    this.octaveCandidateFrames = 0;
     this.noteStartedAt = -Infinity;
-    this.centsDeviation = Math.round(this.centsDeviation * 0.7);
-
-    const deltaSeconds = this.analysisDeltaSeconds(now);
-    this.applyPitchShift(0, deltaSeconds, 0, 0.5);
+    this.centsDeviation = Math.round(this.centsDeviation * 0.6);
   }
 
   private applyPitchShift(
     targetSemitones: number,
     deltaSeconds: number,
     noteAgeSeconds: number,
-    confidence: number,
   ) {
     const speedNorm = this.speed / 100;
-    const transitionNorm = this.transition / 100;
     const humanizeNorm = this.humanize / 100;
 
-    // Convert the UI control to a real retune time. Speed 100 is near-instant;
-    // Speed 0 is deliberately slow. Transition adds glide without changing the
-    // final correction amount.
-    let retuneMs = 3 + Math.pow(1 - speedNorm, 2.1) * 157;
-    retuneMs += transitionNorm * 130;
+    // Speed now controls only the correction servo. Transition belongs to the
+    // target-note guide above, so the two controls no longer fight each other.
+    let retuneMs = 4 + Math.pow(1 - speedNorm, 2.15) * 190;
 
-    // Humanize only slows sustained notes. New note attacks remain responsive.
-    const sustainRamp = Math.max(0, Math.min(1, (noteAgeSeconds - 0.16) / 0.38));
-    retuneMs += humanizeNorm * sustainRamp * 240;
-
-    // Ambiguous frames should move the correction more cautiously rather than
-    // yanking the shifter toward a possibly wrong harmonic.
-    if (confidence < 0.75) {
-      const confidencePenalty = (0.75 - confidence) / 0.20;
-      retuneMs += Math.max(0, Math.min(1, confidencePenalty)) * 90;
-    }
+    const sustainRamp = clamp((noteAgeSeconds - 0.12) / 0.42, 0, 1);
+    retuneMs += humanizeNorm * sustainRamp * 95;
 
     const alpha = this.alphaForTimeConstant(deltaSeconds, Math.max(0.003, retuneMs / 1000));
-    const clampedTarget = Math.max(-2, Math.min(2, targetSemitones));
 
-    this.currentShiftSemitones += (clampedTarget - this.currentShiftSemitones) * alpha;
+    // Chromatic nearest-note correction normally lives inside +/-50 cents.
+    // A wider clamp only exists to survive target transitions without allowing
+    // detector mistakes to launch an obviously synthetic interval jump.
+    const clampedTarget = clamp(targetSemitones, -1.25, 1.25);
+    this.currentShiftSemitones +=
+      (clampedTarget - this.currentShiftSemitones) * alpha;
 
-    // Sub-cent resolution is enough for tuning while avoiding tiny control-rate
-    // fluctuations that only create zipper/warble in the pitch shifter.
-    this.currentShiftSemitones = Math.round(this.currentShiftSemitones * 200) / 200;
-    if (Math.abs(this.currentShiftSemitones) < 0.0025) this.currentShiftSemitones = 0;
+    if (Math.abs(this.currentShiftSemitones) < 0.0008) {
+      this.currentShiftSemitones = 0;
+    }
 
-    this.pitchShift.pitch = this.currentShiftSemitones;
+    this.pushPitchShiftValue();
+  }
+
+  private pushPitchShiftValue() {
+    const value = clamp(this.currentShiftSemitones, -1.25, 1.25);
+
+    if (this.workletNode) {
+      const parameter = this.workletNode.parameters.get('semitones');
+      if (parameter) {
+        const now = this.rawCtx.currentTime;
+        try {
+          parameter.cancelAndHoldAtTime(now);
+        } catch {
+          parameter.cancelScheduledValues(now);
+          parameter.setValueAtTime(parameter.value, now);
+        }
+
+        // Main-thread control is already time-smoothed; the processor adds a
+        // final sample-domain 4.5 ms slew so these events cannot become zipper.
+        parameter.setValueAtTime(value, now);
+      }
+    }
+
+    if (this.fallbackPitchShift) {
+      // Fallback changes are deliberately rate-limited by the same controller.
+      // The preferred worklet path does not use Tone.PitchShift at all.
+      if (Math.abs(this.fallbackPitchShift.pitch - value) >= 0.01) {
+        this.fallbackPitchShift.pitch = value;
+      }
+    }
   }
 
   public getTelemetry(): PitchyTelemetry {
@@ -556,6 +755,8 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
       rms: this.currentRms,
       pitchRatio: Math.pow(2, this.currentShiftSemitones / 12),
       confidence: this.confidence,
+      correctionCents: this.currentShiftSemitones * 100,
+      backend: this.backend,
     };
   }
 
@@ -574,7 +775,18 @@ export class PitchyNode extends Tone.ToneAudioNode<any> {
     }
 
     try { this.analyser.disconnect(); } catch {}
-    try { this.pitchShift.dispose(); } catch {}
+
+    if (this.workletNode) {
+      try { this.workletNode.port.close(); } catch {}
+      try { this.workletNode.disconnect(); } catch {}
+      this.workletNode = null;
+    }
+
+    try { this.fallbackPitchShift?.dispose(); } catch {}
+    this.fallbackPitchShift = null;
+
+    try { this.startupDryGain.dispose(); } catch {}
+    try { this.correctedGain.dispose(); } catch {}
     try { this.colorFilter.dispose(); } catch {}
 
     super.dispose();
