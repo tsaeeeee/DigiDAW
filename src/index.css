@@ -39,6 +39,14 @@ input[type="range"].fader-input::-webkit-slider-thumb { appearance: none; width:
   font-variation-settings: "YOPQ" 300;
 }
 
+/* Modal shells that use a full-screen pointer-events wrapper must not create a
+   shared z=300 stacking context. display:contents keeps the original modal
+   geometry untouched while allowing each fixed window's dynamic z-index to
+   participate directly in the viewport stacking order. */
+.plugin-themed > .fixed.inset-0.pointer-events-none {
+  display: contents;
+}
+
 /* Keep the original plugin modal composition exactly as designed. Only identity
    and accent colors are themed by the EffectRack wrapper. */
 .plugin-title-patch .font-black.text-sm.tracking-wider.text-transparent {
