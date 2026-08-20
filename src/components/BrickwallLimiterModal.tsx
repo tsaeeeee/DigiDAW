@@ -143,7 +143,7 @@ export function BrickwallLimiterModal({
       }
 
       const ceilY = Math.max(0, Math.min(h, ((0 - ceiling) / 60) * h));
-      ctx.strokeStyle = metrics.limiting ? '#ef4444' : '#e879f9';
+      ctx.strokeStyle = metrics.limiting ? '#ef4444' : '#facc15';
       ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(0, ceilY); ctx.lineTo(w, ceilY); ctx.stroke();
 
@@ -160,7 +160,7 @@ export function BrickwallLimiterModal({
         ctx.stroke();
       };
       drawHistory('input', '#9ca3af', 1.2);
-      drawHistory('output', '#f472b6', 2);
+      drawHistory('output', '#fde047', 2);
       frame = requestAnimationFrame(draw);
     };
     draw();
@@ -195,9 +195,9 @@ export function BrickwallLimiterModal({
         <div className="p-3 bg-[#111115]">
           <canvas ref={canvasRef} width={474} height={135} className="w-full h-[135px] rounded-lg border border-[#282832]" />
           <div className="mt-2 grid grid-cols-3 gap-2 text-[9px] font-mono">
-            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">DRIVEN</span><div className="text-[#ddd]">{metrics.input > -75 ? `${metrics.input.toFixed(1)}dB` : '-∞'}</div></div>
-            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">OUTPUT</span><div className="text-[#f472b6]">{metrics.output > -75 ? `${metrics.output.toFixed(1)}dB` : '-∞'}</div></div>
-            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">GAIN RED.</span><div className={metrics.limiting ? 'text-red-400' : 'text-[#ddd]'}>{`${metrics.gr.toFixed(1)}dB`}</div></div>
+            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">Driven</span><div className="text-[#ddd]">{metrics.input > -75 ? `${metrics.input.toFixed(1)}dB` : '-∞'}</div></div>
+            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">Output</span><div className="text-[#f472b6]">{metrics.output > -75 ? `${metrics.output.toFixed(1)}dB` : '-∞'}</div></div>
+            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">Gain red.</span><div className={metrics.limiting ? 'text-red-400' : 'text-[#ddd]'}>{`${metrics.gr.toFixed(1)}dB`}</div></div>
           </div>
         </div>
 
@@ -209,9 +209,9 @@ export function BrickwallLimiterModal({
 
           <button type="button" onClick={() => updateParam('truePeak', truePeak === 1 ? 0 : 1)} className="flex flex-col items-center justify-center gap-2">
             <div className={cn('w-14 h-8 rounded-full border p-1 flex items-center transition-all', truePeak === 1 ? 'justify-end border-[#f472b6] bg-[#f472b6]/15' : 'justify-start border-[#383842] bg-[#111114]')}>
-              <div className={cn('w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-black', truePeak === 1 ? 'bg-gradient-to-r from-[#f472b6] to-[#e879f9] text-black' : 'bg-[#333] text-[#777]')}>{truePeak === 1 ? 'ON' : 'OFF'}</div>
+              <div className={cn('w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-black', truePeak === 1 ? 'bg-gradient-to-r from-[#f472b6] to-[#e879f9] text-black' : 'bg-[#333] text-[#777]')}>{truePeak === 1 ? 'On' : 'Off'}</div>
             </div>
-            <div className="text-[9px] text-[#f1f1f4] font-extrabold tracking-widest">TRUE PEAK</div>
+            <div className="text-[9px] text-[#f1f1f4] font-extrabold tracking-widest">True peak</div>
             <div className="text-[8px] text-[#73737c] font-mono">4x OS</div>
           </button>
         </div>
