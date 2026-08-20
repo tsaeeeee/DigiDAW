@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { EffectSlot } from '../types/daw';
-import { cn } from '../lib/utils';
 import { DeEsserNode } from '../dsp/deesser/DeEsserNode';
 import { PluginFrame } from './PluginFrame';
 import { PluginKnob } from './PluginKnob';
+import { PluginModeSwitch } from './PluginModeSwitch';
 
 interface Props { slot:EffectSlot; slotIndex:number; analyser?:any; isPlaying?:boolean; onUpdateParams:(slotIndex:number,bypassed:boolean,params:Record<string,number>)=>void; onClose:()=>void; zIndex?:number; onFocus?:()=>void; }
 export function DeEsserModal({slot,slotIndex,onUpdateParams,onClose,zIndex,onFocus}:Props){
@@ -19,6 +19,6 @@ export function DeEsserModal({slot,slotIndex,onUpdateParams,onClose,zIndex,onFoc
    <PluginKnob label="Attack" leftSubLabel="Fast" rightSubLabel="Slow" value={get('attack',3)} min={0.5} max={50} step={0.1} defaultValue={3} displayValue={`${get('attack',3).toFixed(1)} ms`} isLogarithmic onChange={v=>update('attack',v)} />
    <PluginKnob label="Release" leftSubLabel="Fast" rightSubLabel="Slow" value={get('release',80)} min={10} max={500} step={1} defaultValue={80} displayValue={`${Math.round(get('release',80))} ms`} isLogarithmic onChange={v=>update('release',v)} />
   </div>
-  <div className="px-4 pb-4 flex justify-end"><button type="button" onClick={()=>update('listen',get('listen',0)===1?0:1)} className={cn('h-7 px-4 rounded-full border text-[9px] font-bold',get('listen',0)===1?'bg-[#22d3ee] text-black border-transparent':'bg-[#111114] border-[#34343d] text-[#777]')}>Listen {get('listen',0)===1?'on':'off'}</button></div>
+  <div className="px-4 pb-4 flex justify-end"><PluginModeSwitch label="Monitor" value={get('listen',0)} options={[{value:0,label:'Normal'},{value:1,label:'Listen'}]} onChange={value=>update('listen',value)} className="w-[180px]" /></div>
  </PluginFrame>;
 }
