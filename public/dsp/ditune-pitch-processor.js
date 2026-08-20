@@ -7,7 +7,7 @@
  * - two continuously moving overlap-add read heads
  * - cubic delay-line interpolation
  * - sample-domain pitch-ratio slew
- * - grain/window length aligned to an integer number of detected F0 periods
+ * - grain/window length aligned to an EVEN number of detected F0 periods
  * - near-zero phase parking instead of crossfading differently delayed taps
  */
 class DiTunePitchCorrectionProcessor extends AudioWorkletProcessor {
@@ -139,16 +139,26 @@ class DiTunePitchCorrectionProcessor extends AudioWorkletProcessor {
         Math.min(sampleRate * 0.09, sampleRate * requestedWindowMs / 1000),
       );
 
-      // Align the grain length to a whole number of detected pitch periods.
-      // This is not full PSOLA, but it substantially reduces arbitrary-phase
-      // grain joins on periodic vocal material.
+      // The two overlap heads are separated by half a grain. If the grain has
+      // an odd number of F0 periods, half a grain is N + 0.5 periods and the
+      // fundamental can meet 180 degrees out of phase during the crossfade.
+      // Force an EVEN cycle count so half-window is always a whole number of
+      // vocal periods. This is the most important phase-coherence rule here.
       const periodSamples = sampleRate / Math.max(55, this.smoothedPitchHz);
-      const cycles = Math.max(3, Math.min(40, Math.round(baseWindow / periodSamples)));
+      const rawCycles = baseWindow / periodSamples;
+      const cycles = Math.max(4, Math.min(40, Math.round(rawCycles / 2) * 2));
       const synchronousWindow = Math.max(
         sampleRate * 0.028,
         Math.min(sampleRate * 0.09, cycles * periodSamples),
       );
       this.smoothedWindow += (synchronousWindow - this.smoothedWindow) * this.windowAlpha;
+
+      // Once close enough, snap exactly onto the period-synchronous geometry.
+      // The approach remains smooth, but the steady-state overlap is not left a
+      // fraction of a period away from its phase-coherent target forever.
+      if (Math.abs(synchronousWindow - this.smoothedWindow) < periodSamples * 0.06) {
+        this.smoothedWindow = synchronousWindow;
+      }
 
       const correctionCents = Math.abs(12 * Math.log2(Math.max(1e-9, this.smoothedRatio))) * 100;
 
@@ -157,11 +167,11 @@ class DiTunePitchCorrectionProcessor extends AudioWorkletProcessor {
       this.phase += (this.smoothedRatio - 1) / Math.max(32, this.smoothedWindow);
       this.phase -= Math.floor(this.phase);
 
-      // Important: do NOT crossfade a neutral tap against the two-head shifter
-      // near zero. Those paths have different delay/phase and can create a
-      // metallic comb filter. Instead, when correction is tiny, gently park the
-      // overlap phase at 0 or 0.5. At either point one Hann head is fully closed
-      // and the other fully open, leaving one clean latency-matched delay tap.
+      // Do NOT crossfade a neutral tap against the two-head shifter near zero.
+      // Those paths have different delay/phase and can create a metallic comb
+      // filter. Instead, gently park phase at 0 or 0.5. At either anchor one
+      // Hann head is fully closed and the other fully open, leaving one clean
+      // latency-matched delay tap.
       if (correctionCents < 2.2) {
         const distanceToZero = Math.abs(this.circularDelta(this.phase, 0));
         const distanceToHalf = Math.abs(this.circularDelta(this.phase, 0.5));
