@@ -5,7 +5,8 @@ export type EffectType =
   | 'Delay'
   | 'Limiter'
   | 'Saturator'
-  | 'Pitchy';
+  | 'Pitchy'
+  | 'DeEsser';
 
 export interface EffectSlot {
   id: string;
@@ -30,8 +31,8 @@ export interface Track {
   clips: AudioClip[];
   muted: boolean;
   soloed: boolean;
-  volume: number; // in dB
-  pan: number; // -1 to 1
+  volume: number;
+  pan: number;
   effects?: EffectSlot[];
 }
 
