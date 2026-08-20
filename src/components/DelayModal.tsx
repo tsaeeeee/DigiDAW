@@ -17,14 +17,15 @@ interface DelayPreset {
   lowCut: number;
   lrOffset: number;
   drive: number;
+  pingPong: number;
 }
 
 const PRESETS: DelayPreset[] = [
-  { name: 'Slapback 120ms', time: 120, syncMode: 0, syncDiv: '1/16', feedback: 20, wetMix: 35, outGain: 0, mod: 15, tone: 6, lowCut: 1, lrOffset: 0, drive: 0 },
-  { name: 'Vocal Echo 240ms', time: 240, syncMode: 0, syncDiv: '1/8', feedback: 45, wetMix: 40, outGain: 0, mod: 30, tone: 5, lowCut: 1, lrOffset: 5, drive: 1 },
-  { name: 'Ping-Pong Quarter', time: 375, syncMode: 1, syncDiv: '1/4', feedback: 60, wetMix: 50, outGain: 0, mod: 50, tone: 4.5, lowCut: 1, lrOffset: 25, drive: 0 },
-  { name: 'Warm Tape Echo', time: 300, syncMode: 0, syncDiv: '1/8', feedback: 65, wetMix: 45, outGain: 0, mod: 70, tone: 3.5, lowCut: 1, lrOffset: 10, drive: 1 },
-  { name: 'Ambient Space 500ms', time: 500, syncMode: 0, syncDiv: '1/2', feedback: 80, wetMix: 60, outGain: -1, mod: 80, tone: 7, lowCut: 0, lrOffset: 15, drive: 1 },
+  { name: 'Slapback 120ms', time: 120, syncMode: 0, syncDiv: '1/16', feedback: 20, wetMix: 35, outGain: 0, mod: 15, tone: 6, lowCut: 1, lrOffset: 0, drive: 0, pingPong: 0 },
+  { name: 'Vocal Echo 240ms', time: 240, syncMode: 0, syncDiv: '1/8', feedback: 45, wetMix: 40, outGain: 0, mod: 30, tone: 5, lowCut: 1, lrOffset: 5, drive: 1, pingPong: 0 },
+  { name: 'Ping-Pong Quarter', time: 375, syncMode: 1, syncDiv: '1/4', feedback: 60, wetMix: 50, outGain: 0, mod: 50, tone: 4.5, lowCut: 1, lrOffset: 25, drive: 0, pingPong: 1 },
+  { name: 'Warm Tape Echo', time: 300, syncMode: 0, syncDiv: '1/8', feedback: 65, wetMix: 45, outGain: 0, mod: 70, tone: 3.5, lowCut: 1, lrOffset: 10, drive: 1, pingPong: 0 },
+  { name: 'Ambient Space 500ms', time: 500, syncMode: 0, syncDiv: '1/2', feedback: 80, wetMix: 60, outGain: -1, mod: 80, tone: 7, lowCut: 0, lrOffset: 15, drive: 1, pingPong: 0 },
 ];
 
 const SYNC_DIVISIONS = ['1/32', '1/16', '1/8', '1/4', '1/2', '1/1'];
@@ -54,6 +55,7 @@ export function DelayModal({ slot, slotIndex, onUpdateParams, onClose, zIndex, o
   const feedback = params.feedback ?? 40;
   const lrOffset = params.lrOffset ?? 0;
   const drive = params.drive ?? 0;
+  const pingPong = params.pingPong ?? 0;
 
   const [position, setPosition] = useState(() => ({
     x: Math.max(20, Math.round(window.innerWidth / 2 - 310)),
@@ -80,11 +82,17 @@ export function DelayModal({ slot, slotIndex, onUpdateParams, onClose, zIndex, o
       lowCut: preset.lowCut,
       lrOffset: preset.lrOffset,
       drive: preset.drive,
+      pingPong: preset.pingPong,
     });
     setPresetOpen(false);
   };
 
-  const selectedPreset = PRESETS.find((preset) => preset.time === time && preset.feedback === feedback && preset.syncMode === syncMode);
+  const selectedPreset = PRESETS.find((preset) =>
+    preset.time === time &&
+    preset.feedback === feedback &&
+    preset.syncMode === syncMode &&
+    preset.pingPong === pingPong
+  );
   const selectedName = selectedPreset?.name || 'Custom';
 
   const handleHeaderMouseDown = (event: React.MouseEvent) => {
@@ -96,7 +104,7 @@ export function DelayModal({ slot, slotIndex, onUpdateParams, onClose, zIndex, o
       if (!dragging.current) return;
       setPosition({
         x: Math.max(10, Math.min(window.innerWidth - 620, moveEvent.clientX - dragOffset.current.x)),
-        y: Math.max(10, Math.min(window.innerHeight - 410, moveEvent.clientY - dragOffset.current.y)),
+        y: Math.max(10, Math.min(window.innerHeight - 430, moveEvent.clientY - dragOffset.current.y)),
       });
     };
     const up = () => {
@@ -132,16 +140,16 @@ export function DelayModal({ slot, slotIndex, onUpdateParams, onClose, zIndex, o
 
       <div className="p-4 grid grid-cols-12 gap-3 bg-[#141416]">
         <section className="col-span-3 rounded-xl border border-[#292934] bg-[#18181e] p-3">
-          <div className="text-[9px] font-black tracking-[0.18em] text-[#a78bfa] mb-3">COLOR</div>
+          <div className="text-[9px] font-black tracking-[0.18em] text-[#a78bfa] mb-3">Color</div>
           <div className="flex flex-col items-center gap-4">
             <PluginKnob label="MOD" leftSubLabel="STABLE" rightSubLabel="WOBBLE" value={mod} min={0} max={100} step={1} defaultValue={50} displayValue={`${Math.round(mod)}%`} size="md" onChange={(v) => updateParam('mod', v)} />
             <PluginKnob label="TONE" leftSubLabel="DARK" rightSubLabel="BRIGHT" value={tone} min={1} max={10} step={0.1} defaultValue={5} displayValue={tone.toFixed(1)} size="md" onChange={(v) => updateParam('tone', v)} />
-            <button type="button" onClick={() => updateParam('lowCut', lowCut === 1 ? 0 : 1)} className={cn('w-full h-7 rounded-full text-[9px] font-black tracking-widest border transition-all', lowCut === 1 ? 'bg-[#f472b6]/15 border-[#f472b6] text-[#f472b6]' : 'bg-[#111114] border-[#34343d] text-[#666]')}>LOW CUT {lowCut === 1 ? 'ON' : 'OFF'}</button>
+            <button type="button" onClick={() => updateParam('lowCut', lowCut === 1 ? 0 : 1)} className={cn('w-full h-7 rounded-full text-[9px] font-black tracking-widest border transition-all', lowCut === 1 ? 'bg-[#f472b6]/15 border-[#f472b6] text-[#f472b6]' : 'bg-[#111114] border-[#34343d] text-[#666]')}>Low cut {lowCut === 1 ? 'on' : 'off'}</button>
           </div>
         </section>
 
         <section className="col-span-6 rounded-xl border border-[#292934] bg-[#18181e] p-3">
-          <div className="text-[9px] font-black tracking-[0.18em] text-[#f472b6] mb-3 text-center">TIME / MIX</div>
+          <div className="text-[9px] font-black tracking-[0.18em] text-[#f472b6] mb-3 text-center">Time / mix</div>
           <div className="flex justify-center">
             {syncMode === 0 ? (
               <PluginKnob label="TIME" leftSubLabel="10ms" rightSubLabel="2s" value={time} min={10} max={2000} step={1} defaultValue={240} displayValue={`${Math.round(time)}ms`} size="xl" isLogarithmic onChange={(v) => updateParam('time', v)} />
@@ -155,7 +163,7 @@ export function DelayModal({ slot, slotIndex, onUpdateParams, onClose, zIndex, o
             )}
           </div>
           <div className="flex justify-center mt-2">
-            <button type="button" onClick={() => updateParam('syncMode', syncMode === 1 ? 0 : 1)} className="px-4 h-7 rounded-full bg-[#111114] border border-[#34343d] text-[9px] font-black tracking-widest text-[#e879f9]">{syncMode === 1 ? 'TEMPO SYNC' : 'MILLISECONDS'}</button>
+            <button type="button" onClick={() => updateParam('syncMode', syncMode === 1 ? 0 : 1)} className="px-4 h-7 rounded-full bg-[#111114] border border-[#34343d] text-[9px] font-black tracking-widest text-[#e879f9]">{syncMode === 1 ? 'Tempo sync' : 'Milliseconds'}</button>
           </div>
           <div className="mt-4 pt-3 border-t border-[#292934] grid grid-cols-2 gap-5 justify-items-center">
             <PluginKnob label="WET MIX" leftSubLabel="DRY" rightSubLabel="WET" value={wetMix} min={0} max={99.9} step={1} defaultValue={50} displayValue={`${Math.round(wetMix)}%`} size="sm" onChange={(v) => updateParam('wetMix', v)} />
@@ -164,11 +172,28 @@ export function DelayModal({ slot, slotIndex, onUpdateParams, onClose, zIndex, o
         </section>
 
         <section className="col-span-3 rounded-xl border border-[#292934] bg-[#18181e] p-3">
-          <div className="text-[9px] font-black tracking-[0.18em] text-[#c084fc] mb-3">REPEATS</div>
-          <div className="flex flex-col items-center gap-4">
+          <div className="text-[9px] font-black tracking-[0.18em] text-[#c084fc] mb-3">Repeats</div>
+          <div className="flex flex-col items-center gap-3">
             <PluginKnob label="FEEDBACK" leftSubLabel="1 TAP" rightSubLabel="LONG" value={feedback} min={0} max={95} step={1} defaultValue={40} displayValue={`${Math.round(feedback)}%`} size="md" onChange={(v) => updateParam('feedback', v)} />
             <PluginKnob label="STEREO" leftSubLabel="LEFT" rightSubLabel="RIGHT" value={lrOffset} min={-50} max={50} step={1} defaultValue={0} displayValue={`${lrOffset > 0 ? '+' : ''}${Math.round(lrOffset)}%`} size="md" onChange={(v) => updateParam('lrOffset', v)} />
-            <button type="button" onClick={() => updateParam('drive', drive === 1 ? 0 : 1)} className={cn('w-full h-7 rounded-full text-[9px] font-black tracking-widest border transition-all', drive === 1 ? 'bg-[#f472b6]/15 border-[#f472b6] text-[#f472b6]' : 'bg-[#111114] border-[#34343d] text-[#666]')}>DRIVE {drive === 1 ? 'ON' : 'OFF'}</button>
+
+            <div className="w-full flex items-center justify-between gap-2 rounded-lg bg-[#111114] border border-[#34343d] px-2 py-1.5">
+              <div className="min-w-0">
+                <div className="text-[8px] text-[#777] font-black tracking-widest">Mode</div>
+                <div className="text-[9px] text-[#ddd] font-bold truncate">{pingPong === 1 ? 'Ping-pong' : 'Standard'}</div>
+              </div>
+              <button
+                type="button"
+                aria-label="Toggle ping-pong delay"
+                aria-pressed={pingPong === 1}
+                onClick={() => updateParam('pingPong', pingPong === 1 ? 0 : 1)}
+                className={cn('relative w-11 h-6 shrink-0 rounded-full transition-colors duration-150', pingPong === 1 ? 'bg-[#f472b6]' : 'bg-[#34343d]')}
+              >
+                <span className={cn('absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-150', pingPong === 1 && 'translate-x-5')} />
+              </button>
+            </div>
+
+            <button type="button" onClick={() => updateParam('drive', drive === 1 ? 0 : 1)} className={cn('w-full h-7 rounded-full text-[9px] font-black tracking-widest border transition-all', drive === 1 ? 'bg-[#f472b6]/15 border-[#f472b6] text-[#f472b6]' : 'bg-[#111114] border-[#34343d] text-[#666]')}>Drive {drive === 1 ? 'on' : 'off'}</button>
           </div>
         </section>
       </div>
