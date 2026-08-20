@@ -4,6 +4,9 @@ export interface DeEsserParams {
   lowFreq?: number;
   highFreq?: number;
   threshold?: number;
+  detection?: number;
+  amountDb?: number;
+  /** Legacy project compatibility from the original compressor-style UI. */
   ratio?: number;
   attack?: number;
   release?: number;
@@ -14,6 +17,10 @@ export interface DeEsserParams {
 export interface DeEsserTelemetry {
   reductionDb: number;
   detectorDb: number;
+  rawSibilanceDb: number;
+  broadbandDb: number;
+  prominenceDb: number;
+  triggerExcessDb: number;
   backend: 'loading' | 'worklet' | 'native-fallback';
 }
 
@@ -37,10 +44,14 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
   private backend: DeEsserTelemetry['backend'] = 'loading';
   private reductionDb = 0;
   private detectorDb = -120;
+  private rawSibilanceDb = -120;
+  private broadbandDb = -120;
+  private prominenceDb = -120;
+  private triggerExcessDb = 0;
   private disposedInternal = false;
   private params: DeEsserParams = {};
 
-  // Native fallback nodes. The normal Chromium path uses the AudioWorklet above.
+  // Compatibility fallback. Supported Chromium browsers should use the worklet.
   private fallbackFilters: BiquadFilterNode[] = [];
   private fallbackCompressor: DynamicsCompressorNode | null = null;
   private fallbackLowGain: GainNode | null = null;
@@ -57,8 +68,8 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
     this.input = this.inputNode;
     this.output = this.outputNode;
 
-    // AudioWorklet loading is asynchronous. Pass clean audio until the DSP is
-    // ready, then crossfade once into the latency-stable processed path.
+    // Pass clean audio only while the asynchronous DSP module loads. Once the
+    // processor exists, the dry startup path is faded out permanently.
     this.dryGain = new Tone.Gain({ context: this.context, gain: 1 });
     this.processedGain = new Tone.Gain({ context: this.context, gain: 0 });
     this.inputNode.connect(this.dryGain);
@@ -112,7 +123,8 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
           lowFreq: p.lowFreq,
           highFreq: p.highFreq,
           threshold: p.threshold,
-          ratio: p.ratio,
+          detection: p.detection,
+          amountDb: p.amountDb,
           attackMs: p.attack,
           releaseMs: p.release,
           listen: p.listen,
@@ -124,6 +136,10 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
         if (event.data?.type !== 'telemetry') return;
         this.reductionDb = Math.max(0, Number(event.data.reductionDb) || 0);
         this.detectorDb = Math.min(6, Number(event.data.detectorDb) || -120);
+        this.rawSibilanceDb = Math.min(6, Number(event.data.rawSibilanceDb) || -120);
+        this.broadbandDb = Math.min(6, Number(event.data.broadbandDb) || -120);
+        this.prominenceDb = Math.min(24, Number(event.data.prominenceDb) || -120);
+        this.triggerExcessDb = Math.max(0, Number(event.data.triggerExcessDb) || 0);
       };
 
       this.workletNode = node;
@@ -143,9 +159,16 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
   }
 
   private fadeToProcessed() {
+    // Explicitly cancel old startup automation so hot reload / rapid rack changes
+    // cannot leave a parallel clean path masquerading as a bypassed processor.
     try {
-      this.dryGain.gain.rampTo(0, 0.035);
-      this.processedGain.gain.rampTo(1, 0.035);
+      const now = this.raw.currentTime;
+      this.dryGain.gain.cancelScheduledValues(now);
+      this.processedGain.gain.cancelScheduledValues(now);
+      this.dryGain.gain.setValueAtTime(this.dryGain.gain.value, now);
+      this.processedGain.gain.setValueAtTime(this.processedGain.gain.value, now);
+      this.dryGain.gain.linearRampToValueAtTime(0, now + 0.035);
+      this.processedGain.gain.linearRampToValueAtTime(1, now + 0.035);
     } catch {
       this.dryGain.gain.value = 0;
       this.processedGain.gain.value = 1;
@@ -159,11 +182,18 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
       lowFreq + 500,
       16000,
     );
+
+    // Existing projects may still carry the old compressor ratio. Translate it
+    // into a sensible maximum attenuation only when amountDb is absent.
+    const legacyRatio = clamp(this.params.ratio ?? 6, 1, 20);
+    const legacyAmount = clamp((legacyRatio - 1) * 1.4, 0, 18);
+
     return {
       lowFreq,
       highFreq,
       threshold: clamp(this.params.threshold ?? -28, -60, -4),
-      ratio: clamp(this.params.ratio ?? 6, 1, 20),
+      detection: clamp(this.params.detection ?? 65, 0, 100),
+      amountDb: clamp(this.params.amountDb ?? legacyAmount || 8, 0, 18),
       attack: clamp(this.params.attack ?? 3, 0.5, 50),
       release: clamp(this.params.release ?? 80, 10, 500),
       listen: (this.params.listen ?? 0) === 1 ? 1 : 0,
@@ -194,19 +224,15 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
     this.setWorkletParam('lowFreq', p.lowFreq, immediate);
     this.setWorkletParam('highFreq', p.highFreq, immediate);
     this.setWorkletParam('threshold', p.threshold, immediate);
-    this.setWorkletParam('ratio', p.ratio, immediate);
+    this.setWorkletParam('detection', p.detection, immediate);
+    this.setWorkletParam('amountDb', p.amountDb, immediate);
     this.setWorkletParam('attackMs', p.attack, immediate);
     this.setWorkletParam('releaseMs', p.release, immediate);
     this.setWorkletParam('listen', p.listen, immediate);
     this.setWorkletParam('mode', p.mode, immediate);
   }
 
-  /**
-   * Compatibility path only. It mirrors the phase-compensated LR4 topology of
-   * the worklet, then uses a native DynamicsCompressorNode for the selected band.
-   * Supported browsers should stay on the AudioWorklet because it avoids native
-   * compressor lookahead ambiguity and supports the true Wide mode.
-   */
+  /** Compatibility fallback with the same phase-compensated LR4 split. */
   private buildNativeFallback() {
     const raw = this.raw;
     const makeFilter = (type: BiquadFilterType) => {
@@ -218,19 +244,14 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
       return filter;
     };
 
-    // First crossover: low / upper.
     const lowLp1 = makeFilter('lowpass');
     const lowLp2 = makeFilter('lowpass');
     const upperHp1 = makeFilter('highpass');
     const upperHp2 = makeFilter('highpass');
-
-    // High-crossover all-pass phase compensation on the low branch.
     const lowPhaseLp1 = makeFilter('lowpass');
     const lowPhaseLp2 = makeFilter('lowpass');
     const lowPhaseHp1 = makeFilter('highpass');
     const lowPhaseHp2 = makeFilter('highpass');
-
-    // Second crossover: selected sibilance band / high band.
     const sibLp1 = makeFilter('lowpass');
     const sibLp2 = makeFilter('lowpass');
     const highHp1 = makeFilter('highpass');
@@ -242,8 +263,6 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
     const highGain = raw.createGain();
     const lowDelay = raw.createDelay(0.02);
     const highDelay = raw.createDelay(0.02);
-
-    // Approximate native compressor lookahead in the compatibility path only.
     lowDelay.delayTime.value = 0.006;
     highDelay.delayTime.value = 0.006;
 
@@ -269,13 +288,11 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
 
     nativeInput.connect(upperHp1);
     upperHp1.connect(upperHp2);
-
     upperHp2.connect(sibLp1);
     sibLp1.connect(sibLp2);
     sibLp2.connect(compressor);
     compressor.connect(sibGain);
     sibGain.connect(nativeProcessed);
-
     upperHp2.connect(highHp1);
     highHp1.connect(highHp2);
     highHp2.connect(highDelay);
@@ -287,39 +304,19 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
     if (!this.fallbackCompressor || this.fallbackFilters.length < 12) return;
     const p = this.normalizedParams();
     const [
-      lowLp1,
-      lowLp2,
-      upperHp1,
-      upperHp2,
-      lowPhaseLp1,
-      lowPhaseLp2,
-      lowPhaseHp1,
-      lowPhaseHp2,
-      sibLp1,
-      sibLp2,
-      highHp1,
-      highHp2,
+      lowLp1, lowLp2, upperHp1, upperHp2,
+      lowPhaseLp1, lowPhaseLp2, lowPhaseHp1, lowPhaseHp2,
+      sibLp1, sibLp2, highHp1, highHp2,
     ] = this.fallbackFilters;
 
-    [lowLp1, lowLp2, upperHp1, upperHp2].forEach((filter) => {
-      filter.frequency.value = p.lowFreq;
-    });
-    [
-      lowPhaseLp1,
-      lowPhaseLp2,
-      lowPhaseHp1,
-      lowPhaseHp2,
-      sibLp1,
-      sibLp2,
-      highHp1,
-      highHp2,
-    ].forEach((filter) => {
-      filter.frequency.value = p.highFreq;
-    });
+    [lowLp1, lowLp2, upperHp1, upperHp2].forEach((filter) => { filter.frequency.value = p.lowFreq; });
+    [lowPhaseLp1, lowPhaseLp2, lowPhaseHp1, lowPhaseHp2, sibLp1, sibLp2, highHp1, highHp2]
+      .forEach((filter) => { filter.frequency.value = p.highFreq; });
 
-    this.fallbackCompressor.threshold.value = p.threshold;
+    const detectionNorm = p.detection / 100;
+    this.fallbackCompressor.threshold.value = clamp(p.threshold - (4 + detectionNorm * 18), -100, -4);
     this.fallbackCompressor.knee.value = 6;
-    this.fallbackCompressor.ratio.value = p.ratio;
+    this.fallbackCompressor.ratio.value = clamp(1 + p.amountDb * 0.9, 1, 20);
     this.fallbackCompressor.attack.value = p.attack / 1000;
     this.fallbackCompressor.release.value = p.release / 1000;
 
@@ -341,6 +338,10 @@ export class DeEsserNode extends Tone.ToneAudioNode<any> {
     return {
       reductionDb: this.getReductionDb(),
       detectorDb: this.detectorDb,
+      rawSibilanceDb: this.rawSibilanceDb,
+      broadbandDb: this.broadbandDb,
+      prominenceDb: this.prominenceDb,
+      triggerExcessDb: this.triggerExcessDb,
       backend: this.backend,
     };
   }
