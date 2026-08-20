@@ -115,9 +115,7 @@ export class StereoChannel {
     // Track and master buses are explicitly stereo. Mono sources are upmixed
     // using speaker semantics at the bus boundary, while native stereo files
     // and stereo-generating effects preserve independent L/R channels.
-    [this.input, this.output, this.preFaderNode, this.volNode].forEach(configureStereoBus);
-    try { (this.panner as any).channelCount = 2; } catch {}
-    try { (this.panner as any).channelInterpretation = 'speakers'; } catch {}
+    [this.input, this.output, this.preFaderNode, this.panner, this.volNode].forEach(configureStereoBus);
 
     safeConnect(this.preFaderNode, this.preFaderMeter);
     safeConnect(this.preFaderNode, this.fft);
@@ -147,7 +145,14 @@ export class StereoChannel {
 
     const flat: any[] = []; const instances: EffectInstance[] = [];
     for (const slot of active) {
-      try { const nodes = this.createEffectNodes(slot); if (nodes.length) { flat.push(...nodes); instances.push({ type: slot.type!, nodes }); } }
+      try {
+        const nodes = this.createEffectNodes(slot);
+        // Every serial insert is explicitly stereo-preserving. This prevents a
+        // generic insert after Diecho/Dipantul from collapsing an already-wide
+        // signal back to mono before the pre-fader/pan/master path.
+        nodes.forEach(configureStereoBus);
+        if (nodes.length) { flat.push(...nodes); instances.push({ type: slot.type!, nodes }); }
+      }
       catch (err) { console.warn('Effect creation failed for type:', slot.type, err); }
     }
     this.activeEffectInstances = instances;
