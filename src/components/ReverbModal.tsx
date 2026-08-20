@@ -4,6 +4,7 @@ import { cn } from '../lib/utils';
 import { EffectSlot } from '../types/daw';
 import { ProReverbNode } from '../dsp/reverb/ProReverbNode';
 import { PluginKnob } from './PluginKnob';
+import { PluginModeSwitch } from './PluginModeSwitch';
 
 interface ReverbPreset {
   name: string;
@@ -99,7 +100,7 @@ export function ReverbModal({
   const [presetOpen, setPresetOpen] = useState(false);
   const [meters, setMeters] = useState({ input: 0, wet: 0, output: 0, active: false });
   const [position, setPosition] = useState(() => ({
-    x: Math.max(20, Math.round(window.innerWidth / 2 - 390)),
+    x: Math.max(20, Math.round(window.innerWidth / 2 - 350)),
     y: Math.max(20, Math.round(window.innerHeight / 2 - 245)),
   }));
   const dragging = useRef(false);
@@ -135,7 +136,7 @@ export function ReverbModal({
     const move = (moveEvent: MouseEvent) => {
       if (!dragging.current) return;
       setPosition({
-        x: Math.max(10, Math.min(window.innerWidth - 780, moveEvent.clientX - dragOffset.current.x)),
+        x: Math.max(10, Math.min(window.innerWidth - 700, moveEvent.clientX - dragOffset.current.x)),
         y: Math.max(10, Math.min(window.innerHeight - 490, moveEvent.clientY - dragOffset.current.y)),
       });
     };
@@ -170,7 +171,7 @@ export function ReverbModal({
     <div className="fixed inset-0 z-[300] pointer-events-none">
       <div
         onMouseDown={() => onFocus?.()}
-        style={{ left: position.x, top: position.y, width: 780, zIndex: zIndex ?? 310 }}
+        style={{ left: position.x, top: position.y, width: 700, zIndex: zIndex ?? 310 }}
         className="fixed pointer-events-auto overflow-hidden rounded-xl border border-[#2e2e36] bg-[#141416] shadow-[0_25px_60px_rgba(0,0,0,0.95)] font-sans select-none"
       >
         <div
@@ -282,23 +283,12 @@ export function ReverbModal({
             </div>
 
             <div className="mt-auto pt-3 border-t border-[#292934]">
-              <div className="text-[8px] text-[#666] font-black tracking-widest mb-1.5 text-center">WET FIELD MODE</div>
-              <div className="flex p-0.5 rounded-full bg-[#101014] border border-[#2a2a34]">
-                <button
-                  type="button"
-                  onClick={() => updateParam('mode', 0)}
-                  className={cn('flex-1 h-7 rounded-full text-[9px] font-extrabold tracking-wider', mode === 0 ? 'bg-gradient-to-r from-[#f472b6] to-[#e879f9] text-black' : 'text-[#777]')}
-                >
-                  STEREO
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateParam('mode', 1)}
-                  className={cn('flex-1 h-7 rounded-full text-[9px] font-extrabold tracking-wider', mode === 1 ? 'bg-gradient-to-r from-[#e879f9] to-[#c084fc] text-black' : 'text-[#777]')}
-                >
-                  SIDE
-                </button>
-              </div>
+              <PluginModeSwitch
+                label="Wet field mode"
+                value={mode}
+                options={[{ value: 0, label: 'Stereo' }, { value: 1, label: 'Side' }]}
+                onChange={(value) => updateParam('mode', value)}
+              />
             </div>
           </section>
         </div>
