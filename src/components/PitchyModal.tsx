@@ -4,6 +4,7 @@ import { cn } from '../lib/utils';
 import { EffectSlot } from '../types/daw';
 import { PitchyNode } from '../dsp/pitchy/PitchyNode';
 import { PluginKnob } from './PluginKnob';
+import { PluginModeSwitch } from './PluginModeSwitch';
 
 interface PitchyPreset {
   name: string;
@@ -326,35 +327,13 @@ export function PitchyModal({
                 onChange={(value) => updateParams({ referenceHz: value })}
               />
 
-              <div className="flex-1">
-                <div className="flex items-center bg-[#101014] border border-[#2a2a34] rounded-full p-0.5 w-full">
-                  <button
-                    type="button"
-                    onClick={() => updateParams({ modeHQ: 0 })}
-                    className={cn(
-                      'flex-1 h-7 rounded-full text-[9px] font-extrabold tracking-wider transition-all',
-                      modeHQ === 0
-                        ? 'bg-gradient-to-r from-[#f472b6] to-[#e879f9] text-black shadow-[0_0_8px_rgba(244,114,182,0.5)]'
-                        : 'text-[#777] hover:text-[#ccc]',
-                    )}
-                  >
-                    REAL TIME
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateParams({ modeHQ: 1 })}
-                    className={cn(
-                      'flex-1 h-7 rounded-full text-[9px] font-extrabold tracking-wider transition-all',
-                      modeHQ === 1
-                        ? 'bg-gradient-to-r from-[#f472b6] to-[#e879f9] text-black shadow-[0_0_8px_rgba(244,114,182,0.5)]'
-                        : 'text-[#777] hover:text-[#ccc]',
-                    )}
-                  >
-                    HQ
-                  </button>
-                </div>
-                <div className="text-center text-[8px] text-[#666] font-bold tracking-widest mt-1">PROCESSING MODE</div>
-              </div>
+              <PluginModeSwitch
+                label="Processing mode"
+                value={modeHQ}
+                options={[{ value: 0, label: 'Real time' }, { value: 1, label: 'HQ' }]}
+                onChange={(value) => updateParams({ modeHQ: value })}
+                className="flex-1"
+              />
             </div>
           </div>
         </div>
