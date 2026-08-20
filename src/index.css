@@ -30,6 +30,15 @@
 input[type="range"].fader-input { appearance: none; background: transparent; cursor: ns-resize; }
 input[type="range"].fader-input::-webkit-slider-thumb { appearance: none; width: 18px; height: 30px; background: #444; border: 1px solid #666; border-radius: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 
+/* Plugin typography is intentionally isolated from the rest of the DAW. Even
+   utility classes such as font-mono inside a plugin resolve to Kumbh Sans. */
+.plugin-themed,
+.plugin-themed * {
+  font-family: "Kumbh Sans", sans-serif !important;
+  font-optical-sizing: auto;
+  font-variation-settings: "YOPQ" 300;
+}
+
 /* Keep the original plugin modal composition exactly as designed. Only identity
    and accent colors are themed by the EffectRack wrapper. */
 .plugin-title-patch .font-black.text-sm.tracking-wider.text-transparent {
