@@ -1,16 +1,14 @@
 /**
  * DiTune continuous vocal pitch-correction processor.
  *
- * This is intentionally optimized for the small pitch moves used by vocal
- * correction rather than octave-scale creative transposition.
+ * Optimized for the small pitch moves used by vocal correction.
  *
  * Key properties:
  * - two continuously moving overlap-add read heads
  * - cubic delay-line interpolation
  * - sample-domain pitch-ratio slew
  * - grain/window length aligned to an integer number of detected F0 periods
- * - hysteretic near-zero neutral mode so 1-5 cent fluctuations do not chatter
- *   between two differently phased signal paths every control frame
+ * - near-zero phase parking instead of crossfading differently delayed taps
  */
 class DiTunePitchCorrectionProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
@@ -53,23 +51,27 @@ class DiTunePitchCorrectionProcessor extends AudioWorkletProcessor {
     this.smoothedRatio = 1;
     this.smoothedPitchHz = 180;
     this.smoothedWindow = Math.max(32, sampleRate * 0.052);
-    this.shiftMix = 0;
-    this.shiftGate = false;
     this.framesWritten = 0;
 
-    // The controller has already done musical retune smoothing. These time
-    // constants are only anti-zipper / anti-splice protection in the audio
-    // thread, not another musical retune stage.
+    // The controller already performs the musical retune envelope. These are
+    // audio-thread anti-zipper / anti-splice smoothers only.
     this.ratioAlpha = 1 - Math.exp(-1 / (sampleRate * 0.007));
     this.pitchAlpha = 1 - Math.exp(-1 / (sampleRate * 0.045));
     this.windowAlpha = 1 - Math.exp(-1 / (sampleRate * 0.05));
-    this.mixAlpha = 1 - Math.exp(-1 / (sampleRate * 0.018));
+    this.parkAlpha = 1 - Math.exp(-1 / (sampleRate * 0.020));
   }
 
   wrapIndex(index) {
     let wrapped = index % this.bufferLength;
     if (wrapped < 0) wrapped += this.bufferLength;
     return wrapped;
+  }
+
+  circularDelta(from, to) {
+    let delta = to - from;
+    while (delta > 0.5) delta -= 1;
+    while (delta < -0.5) delta += 1;
+    return delta;
   }
 
   readCubic(buffer, position) {
@@ -110,8 +112,8 @@ class DiTunePitchCorrectionProcessor extends AudioWorkletProcessor {
     const twoPi = Math.PI * 2;
 
     for (let frame = 0; frame < frameCount; frame++) {
-      // Mono sources are mirrored into the second history buffer. Native stereo
-      // material keeps independent histories.
+      // Mono sources are mirrored to channel 2. Native stereo keeps independent
+      // histories so the insert never collapses the channel topology.
       for (let channel = 0; channel < 2; channel++) {
         const source = input[channel] || input[0];
         this.buffers[channel][this.writeIndex] = source ? (source[frame] || 0) : 0;
@@ -120,17 +122,7 @@ class DiTunePitchCorrectionProcessor extends AudioWorkletProcessor {
       const requestedSemitones = semitoneValues.length > 1
         ? semitoneValues[frame]
         : semitoneValues[0];
-      const requestedCents = Math.abs(requestedSemitones) * 100;
-
-      // Schmitt-trigger-style neutral zone. Enter correction only when it is
-      // musically meaningful, and do not leave it again until the correction is
-      // genuinely tiny. This prevents 2-4 cent detector motion from repeatedly
-      // crossfading differently delayed taps and sounding phasey/robotic.
-      if (!this.shiftGate && requestedCents >= 5.0) this.shiftGate = true;
-      else if (this.shiftGate && requestedCents <= 1.8) this.shiftGate = false;
-
-      const effectiveSemitones = this.shiftGate ? requestedSemitones : 0;
-      const targetRatio = Math.pow(2, effectiveSemitones / 12);
+      const targetRatio = Math.pow(2, requestedSemitones / 12);
       this.smoothedRatio += (targetRatio - this.smoothedRatio) * this.ratioAlpha;
 
       const requestedPitchHz = inputHzValues.length > 1
@@ -147,9 +139,9 @@ class DiTunePitchCorrectionProcessor extends AudioWorkletProcessor {
         Math.min(sampleRate * 0.09, sampleRate * requestedWindowMs / 1000),
       );
 
-      // Pitch-synchronous-ish grain sizing: choose the closest whole number of
-      // periods to the requested quality window. The splice points are therefore
-      // much more likely to meet the vocal waveform at similar periodic phase.
+      // Align the grain length to a whole number of detected pitch periods.
+      // This is not full PSOLA, but it substantially reduces arbitrary-phase
+      // grain joins on periodic vocal material.
       const periodSamples = sampleRate / Math.max(55, this.smoothedPitchHz);
       const cycles = Math.max(3, Math.min(40, Math.round(baseWindow / periodSamples)));
       const synchronousWindow = Math.max(
@@ -158,36 +150,38 @@ class DiTunePitchCorrectionProcessor extends AudioWorkletProcessor {
       );
       this.smoothedWindow += (synchronousWindow - this.smoothedWindow) * this.windowAlpha;
 
-      // Only advance the grain phase while correction is active or fading out.
-      // At neutral, the phase settles and the output becomes a stable fixed-delay
-      // tap rather than a pair of stationary taps that would comb-filter.
-      const targetMix = this.shiftGate ? 1 : 0;
-      this.shiftMix += (targetMix - this.shiftMix) * this.mixAlpha;
+      const correctionCents = Math.abs(12 * Math.log2(Math.max(1e-9, this.smoothedRatio))) * 100;
 
-      if (this.shiftGate || this.shiftMix > 0.001) {
-        this.phase += (this.smoothedRatio - 1) / Math.max(32, this.smoothedWindow);
+      // Continuous read-head velocity. Crossing correction zero merely reverses
+      // phase direction; nothing gets reconfigured or restarted.
+      this.phase += (this.smoothedRatio - 1) / Math.max(32, this.smoothedWindow);
+      this.phase -= Math.floor(this.phase);
+
+      // Important: do NOT crossfade a neutral tap against the two-head shifter
+      // near zero. Those paths have different delay/phase and can create a
+      // metallic comb filter. Instead, when correction is tiny, gently park the
+      // overlap phase at 0 or 0.5. At either point one Hann head is fully closed
+      // and the other fully open, leaving one clean latency-matched delay tap.
+      if (correctionCents < 2.2) {
+        const distanceToZero = Math.abs(this.circularDelta(this.phase, 0));
+        const distanceToHalf = Math.abs(this.circularDelta(this.phase, 0.5));
+        const anchor = distanceToZero <= distanceToHalf ? 0 : 0.5;
+        const parkStrength = 1 - correctionCents / 2.2;
+        this.phase += this.circularDelta(this.phase, anchor) * this.parkAlpha * parkStrength;
         this.phase -= Math.floor(this.phase);
       }
 
       const phaseA = this.phase;
       const phaseB = (this.phase + 0.5) % 1;
 
-      // Complementary Hann windows sum to 1 for half-cycle phase offset.
+      // Half-cycle-offset Hann windows are complementary: gainA + gainB = 1.
       const gainA = 0.5 - 0.5 * Math.cos(twoPi * phaseA);
       const gainB = 0.5 - 0.5 * Math.cos(twoPi * phaseB);
 
       const safetyDelay = 6;
       const delayA = safetyDelay + (1 - phaseA) * this.smoothedWindow;
       const delayB = safetyDelay + (1 - phaseB) * this.smoothedWindow;
-      const neutralDelay = safetyDelay + this.smoothedWindow * 0.5;
-
       const enoughHistory = this.framesWritten > this.smoothedWindow + 12;
-
-      // Equal-power transition is only used when crossing the hysteresis
-      // thresholds, not continuously around every tiny correction fluctuation.
-      const crossfadeAngle = Math.max(0, Math.min(1, this.shiftMix)) * Math.PI * 0.5;
-      const neutralGain = Math.cos(crossfadeAngle);
-      const shiftedGain = Math.sin(crossfadeAngle);
 
       for (let channel = 0; channel < output.length; channel++) {
         const source = input[channel] || input[0];
@@ -198,14 +192,9 @@ class DiTunePitchCorrectionProcessor extends AudioWorkletProcessor {
           continue;
         }
 
-        const shifted =
+        output[channel][frame] =
           this.readDelay(history, delayA) * gainA +
           this.readDelay(history, delayB) * gainB;
-        const neutral = this.readDelay(history, neutralDelay);
-
-        output[channel][frame] =
-          neutral * neutralGain +
-          shifted * shiftedGain;
       }
 
       this.writeIndex += 1;
