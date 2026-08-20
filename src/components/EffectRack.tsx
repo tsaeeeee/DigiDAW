@@ -23,6 +23,17 @@ export const DEDICATED_EFFECTS: { type: EffectType; name: string; shortCode: str
   { type: 'DeEsser', name: 'Disser', shortCode: 'DESS', color: '#22d3ee', desc: 'Dynamic sibilance control' },
 ];
 
+const SECONDARY_ACCENTS: Record<EffectType, string> = {
+  Compressor: '#fdba74',
+  EQ: '#60a5fa',
+  Pitchy: '#c084fc',
+  Reverb: '#e9d5ff',
+  Delay: '#86efac',
+  Limiter: '#fde047',
+  Saturator: '#fb7185',
+  DeEsser: '#67e8f9',
+};
+
 interface Props {
   effects?: EffectSlot[];
   onUpdateEffect: (slotIndex: number, type: EffectType | null, bypassed?: boolean, params?: Record<string, number>) => void;
@@ -49,7 +60,17 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
     zIndex: z,
     onFocus: front,
   });
-  const titleStyle = (type: EffectType) => ({ '--plugin-title': JSON.stringify(DEDICATED_EFFECTS.find(effect => effect.type === type)?.name || type) } as React.CSSProperties);
+
+  const themeStyle = (type: EffectType) => {
+    const meta = DEDICATED_EFFECTS.find(effect => effect.type === type);
+    return {
+      '--plugin-title': JSON.stringify(meta?.name || type),
+      '--plugin-accent': meta?.color || '#f472b6',
+      '--plugin-accent-2': SECONDARY_ACCENTS[type],
+    } as React.CSSProperties;
+  };
+
+  const themeClass = (type: EffectType) => `plugin-title-patch plugin-themed plugin-theme-${type.toLowerCase()}`;
 
   return <div className="w-full flex flex-col gap-1 my-1 relative">
     <div className="w-full bg-[#111113] border border-black rounded p-0.5 flex flex-col gap-0.5 shadow-inner max-h-[83px] overflow-y-auto custom-scrollbar">
@@ -68,13 +89,13 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
       {DEDICATED_EFFECTS.map(meta => <button key={meta.type} onClick={() => { onUpdateEffect(picker, meta.type, false); setOpen({ type: meta.type, index: picker }); setPicker(null); front(); }} className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#282832] text-left"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta.color }} /><div><div className="text-[10px] text-white font-bold">{meta.name}</div><div className="text-[8px] text-[#666]">{meta.desc}</div></div></button>)}
     </div>}
 
-    {open?.type === 'Compressor' && <div className="plugin-title-patch" style={titleStyle('Compressor')}><CompressorModal {...modalProps('Compressor')} /></div>}
-    {open?.type === 'EQ' && <div className="plugin-title-patch" style={titleStyle('EQ')}><EqualizerModal {...modalProps('EQ')} /></div>}
-    {open?.type === 'Pitchy' && <div className="plugin-title-patch" style={titleStyle('Pitchy')}><PitchyModal {...modalProps('Pitchy')} /></div>}
-    {open?.type === 'Reverb' && <div className="plugin-title-patch" style={titleStyle('Reverb')}><ReverbModal {...modalProps('Reverb')} /></div>}
-    {open?.type === 'Delay' && <div className="plugin-title-patch" style={titleStyle('Delay')}><DelayModal {...modalProps('Delay')} /></div>}
-    {open?.type === 'Limiter' && <div className="plugin-title-patch" style={titleStyle('Limiter')}><BrickwallLimiterModal {...modalProps('Limiter')} /></div>}
-    {open?.type === 'Saturator' && <div className="plugin-title-patch" style={titleStyle('Saturator')}><SaturatorModal {...modalProps('Saturator')} /></div>}
-    {open?.type === 'DeEsser' && <DeEsserModal {...modalProps('DeEsser')} />}
+    {open?.type === 'Compressor' && <div className={themeClass('Compressor')} style={themeStyle('Compressor')}><CompressorModal {...modalProps('Compressor')} /></div>}
+    {open?.type === 'EQ' && <div className={themeClass('EQ')} style={themeStyle('EQ')}><EqualizerModal {...modalProps('EQ')} /></div>}
+    {open?.type === 'Pitchy' && <div className={themeClass('Pitchy')} style={themeStyle('Pitchy')}><PitchyModal {...modalProps('Pitchy')} /></div>}
+    {open?.type === 'Reverb' && <div className={themeClass('Reverb')} style={themeStyle('Reverb')}><ReverbModal {...modalProps('Reverb')} /></div>}
+    {open?.type === 'Delay' && <div className={themeClass('Delay')} style={themeStyle('Delay')}><DelayModal {...modalProps('Delay')} /></div>}
+    {open?.type === 'Limiter' && <div className={themeClass('Limiter')} style={themeStyle('Limiter')}><BrickwallLimiterModal {...modalProps('Limiter')} /></div>}
+    {open?.type === 'Saturator' && <div className={themeClass('Saturator')} style={themeStyle('Saturator')}><SaturatorModal {...modalProps('Saturator')} /></div>}
+    {open?.type === 'DeEsser' && <div className={themeClass('DeEsser')} style={themeStyle('DeEsser')}><DeEsserModal {...modalProps('DeEsser')} /></div>}
   </div>;
 }
