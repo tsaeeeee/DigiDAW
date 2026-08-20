@@ -3,6 +3,7 @@ import { ChevronDown, Power, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { EffectSlot } from '../types/daw';
 import { PluginKnob } from './PluginKnob';
+import { PluginModeSwitch } from './PluginModeSwitch';
 
 interface DelayPreset {
   name: string;
@@ -163,7 +164,12 @@ export function DelayModal({ slot, slotIndex, onUpdateParams, onClose, zIndex, o
             )}
           </div>
           <div className="flex justify-center mt-2">
-            <button type="button" onClick={() => updateParam('syncMode', syncMode === 1 ? 0 : 1)} className="px-4 h-7 rounded-full bg-[#111114] border border-[#34343d] text-[9px] font-black tracking-widest text-[#e879f9]">{syncMode === 1 ? 'Tempo sync' : 'Milliseconds'}</button>
+            <PluginModeSwitch
+              value={syncMode}
+              options={[{ value: 0, label: 'Milliseconds' }, { value: 1, label: 'Tempo sync' }]}
+              onChange={(value) => updateParam('syncMode', value)}
+              className="max-w-[230px]"
+            />
           </div>
           <div className="mt-4 pt-3 border-t border-[#292934] grid grid-cols-2 gap-5 justify-items-center">
             <PluginKnob label="WET MIX" leftSubLabel="DRY" rightSubLabel="WET" value={wetMix} min={0} max={99.9} step={1} defaultValue={50} displayValue={`${Math.round(wetMix)}%`} size="sm" onChange={(v) => updateParam('wetMix', v)} />
@@ -176,23 +182,12 @@ export function DelayModal({ slot, slotIndex, onUpdateParams, onClose, zIndex, o
           <div className="flex flex-col items-center gap-3">
             <PluginKnob label="FEEDBACK" leftSubLabel="1 TAP" rightSubLabel="LONG" value={feedback} min={0} max={95} step={1} defaultValue={40} displayValue={`${Math.round(feedback)}%`} size="md" onChange={(v) => updateParam('feedback', v)} />
             <PluginKnob label="STEREO" leftSubLabel="LEFT" rightSubLabel="RIGHT" value={lrOffset} min={-50} max={50} step={1} defaultValue={0} displayValue={`${lrOffset > 0 ? '+' : ''}${Math.round(lrOffset)}%`} size="md" onChange={(v) => updateParam('lrOffset', v)} />
-
-            <div className="w-full flex items-center justify-between gap-2 rounded-lg bg-[#111114] border border-[#34343d] px-2 py-1.5">
-              <div className="min-w-0">
-                <div className="text-[8px] text-[#777] font-black tracking-widest">Mode</div>
-                <div className="text-[9px] text-[#ddd] font-bold truncate">{pingPong === 1 ? 'Ping-pong' : 'Standard'}</div>
-              </div>
-              <button
-                type="button"
-                aria-label="Toggle ping-pong delay"
-                aria-pressed={pingPong === 1}
-                onClick={() => updateParam('pingPong', pingPong === 1 ? 0 : 1)}
-                className={cn('relative w-11 h-6 shrink-0 rounded-full transition-colors duration-150', pingPong === 1 ? 'bg-[#f472b6]' : 'bg-[#34343d]')}
-              >
-                <span className={cn('absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-150', pingPong === 1 && 'translate-x-5')} />
-              </button>
-            </div>
-
+            <PluginModeSwitch
+              label="Mode"
+              value={pingPong}
+              options={[{ value: 0, label: 'Standard' }, { value: 1, label: 'Ping-pong' }]}
+              onChange={(value) => updateParam('pingPong', value)}
+            />
             <button type="button" onClick={() => updateParam('drive', drive === 1 ? 0 : 1)} className={cn('w-full h-7 rounded-full text-[9px] font-black tracking-widest border transition-all', drive === 1 ? 'bg-[#f472b6]/15 border-[#f472b6] text-[#f472b6]' : 'bg-[#111114] border-[#34343d] text-[#666]')}>Drive {drive === 1 ? 'on' : 'off'}</button>
           </div>
         </section>
