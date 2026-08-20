@@ -42,7 +42,6 @@ class BiquadSection {
   }
 
   process(sample, channel) {
-    // Transposed direct-form II keeps the per-sample state compact and stable.
     const output = this.b0 * sample + this.z1[channel];
     this.z1[channel] = this.b1 * sample - this.a1 * output + this.z2[channel];
     this.z2[channel] = this.b2 * sample - this.a2 * output;
@@ -75,20 +74,19 @@ class Lr4Filter {
 /**
  * Disser dynamic sibilance processor.
  *
- * The signal is split by cascaded 4th-order Linkwitz-Riley-style crossovers:
+ * The first LR4 split creates low + upper. The upper branch is split again into
+ * sibilance + high. A second high-crossover LP4+HP4 pair is applied to the low
+ * branch as a phase-compensation all-pass. Therefore, with 0 dB gain reduction:
  *
- * input -> low LP4 -------------------------------> low
- *       -> low HP4 -> high split -> LP4 ----------> sibilance
- *                              -> HP4 -------------> high
+ * compensatedLow + sibilance + high
+ * = A(high) * low + A(high) * upper
+ * = A(high) * A(low) * input
  *
- * The same upper branch feeds both sides of the second split, so when gain
- * reduction is 0 dB the three branches reconstruct without the overlapping
- * one-filter/ two-filter topology that previously created treble bumps while
- * moving the range controls.
+ * The magnitude stays unity while only phase rotates. Moving Range controls can
+ * no longer behave like a hidden treble EQ when the compressor is idle.
  *
- * The detector and gain computer live in this same AudioWorklet. No branch uses
- * DynamicsCompressorNode, so there is no hidden lookahead latency mismatch
- * between the sibilance band and the low/high reconstruction paths.
+ * Detector and gain computer live in this same AudioWorklet. No branch uses a
+ * DynamicsCompressorNode, so there is no hidden lookahead-latency mismatch.
  */
 class DisserProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
@@ -109,6 +107,10 @@ class DisserProcessor extends AudioWorkletProcessor {
 
     this.lowPass = new Lr4Filter('lowpass');
     this.upperHighPass = new Lr4Filter('highpass');
+
+    this.lowPhaseLowPass = new Lr4Filter('lowpass');
+    this.lowPhaseHighPass = new Lr4Filter('highpass');
+
     this.sibLowPass = new Lr4Filter('lowpass');
     this.highPass = new Lr4Filter('highpass');
 
@@ -134,7 +136,10 @@ class DisserProcessor extends AudioWorkletProcessor {
       this.upperHighPass.setFrequency(safeLow);
       this.lastLow = safeLow;
     }
+
     if (Math.abs(safeHigh - this.lastHigh) > 0.1) {
+      this.lowPhaseLowPass.setFrequency(safeHigh);
+      this.lowPhaseHighPass.setFrequency(safeHigh);
       this.sibLowPass.setFrequency(safeHigh);
       this.highPass.setFrequency(safeHigh);
       this.lastHigh = safeHigh;
@@ -159,6 +164,7 @@ class DisserProcessor extends AudioWorkletProcessor {
 
     const attackCoeff = Math.exp(-1 / (sampleRate * attackSeconds));
     const releaseCoeff = Math.exp(-1 / (sampleRate * releaseSeconds));
+    const gainSlew = 1 - Math.exp(-1 / (sampleRate * 0.0015));
     const frameCount = output[0].length;
 
     for (let frame = 0; frame < frameCount; frame++) {
@@ -171,18 +177,24 @@ class DisserProcessor extends AudioWorkletProcessor {
 
       for (let channel = 0; channel < 2; channel++) {
         const sample = samples[channel];
-        const lowBand = this.lowPass.process(sample, channel);
+        const lowBase = this.lowPass.process(sample, channel);
         const upper = this.upperHighPass.process(sample, channel);
+
+        // Sum of the high-crossover LR4 LP/HP pair is an all-pass. Applying that
+        // same phase rotation to the low branch keeps the full three-way sum
+        // magnitude-flat when no gain reduction is active.
+        const compensatedLow =
+          this.lowPhaseLowPass.process(lowBase, channel) +
+          this.lowPhaseHighPass.process(lowBase, channel);
+
         const sibBand = this.sibLowPass.process(upper, channel);
         const highBand = this.highPass.process(upper, channel);
 
-        lows[channel] = lowBand;
+        lows[channel] = compensatedLow;
         sibs[channel] = sibBand;
         highs[channel] = highBand;
       }
 
-      // Peak-like detector works well for short S/SH transients. It is smoothed
-      // before the gain computer, so Attack/Release have a predictable meaning.
       const detector = Math.max(Math.abs(sibs[0]), Math.abs(sibs[1]), 1e-9);
       const envelopeCoeff = detector > this.envelope ? attackCoeff : releaseCoeff;
       this.envelope = detector + envelopeCoeff * (this.envelope - detector);
@@ -195,24 +207,22 @@ class DisserProcessor extends AudioWorkletProcessor {
       targetReductionDb = clamp(targetReductionDb, 0, 24);
 
       const targetGain = Math.pow(10, -targetReductionDb / 20);
-      // The detector envelope already applies musical attack/release; this short
-      // gain slew only prevents sample-edge discontinuities when controls move.
-      const gainSlew = 1 - Math.exp(-1 / (sampleRate * 0.0015));
       this.gain += (targetGain - this.gain) * gainSlew;
       this.reductionDb = Math.max(0, -20 * Math.log10(Math.max(1e-9, this.gain)));
 
       for (let channel = 0; channel < output.length; channel++) {
         const index = Math.min(channel, 1);
+
         if (listen) {
-          // Monitor the exact detector band before gain reduction.
+          // Listen is exactly the detector range before attenuation.
           output[channel][frame] = sibs[index];
         } else if (wideMode) {
-          // Wide-band de-essing: S-band triggers gain reduction, but the whole
-          // vocal is attenuated. Useful when split processing sounds lispy.
+          // Wide: selected S-band detects, whole vocal ducks. There is no makeup
+          // gain, so this mode can only attenuate, never boost.
           output[channel][frame] = samples[index] * this.gain;
         } else {
-          // Split-band mode: low/high remain unity and only the selected
-          // sibilance band is attenuated. No makeup gain exists anywhere.
+          // Split: only selected S-band is attenuated. Low/high remain unity and
+          // the phase-compensated crossover reconstructs flat at 0 dB GR.
           output[channel][frame] =
             lows[index] + sibs[index] * this.gain + highs[index];
         }
