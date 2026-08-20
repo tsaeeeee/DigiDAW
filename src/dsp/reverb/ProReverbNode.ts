@@ -11,6 +11,17 @@ export interface ReverbTelemetry {
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
+function forceStereo(node: any) {
+  if (!node) return;
+  const candidates = [node, node.input, node.output, node._gainNode];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try { if ('channelCount' in candidate) candidate.channelCount = 2; } catch {}
+    try { if ('channelCountMode' in candidate) candidate.channelCountMode = 'explicit'; } catch {}
+    try { if ('channelInterpretation' in candidate) candidate.channelInterpretation = 'speakers'; } catch {}
+  }
+}
+
 export class ProReverbNode extends Tone.ToneAudioNode<any> {
   readonly name = 'ProReverbNode';
   public static lastActiveInstance: ProReverbNode | null = null;
@@ -75,8 +86,17 @@ export class ProReverbNode extends Tone.ToneAudioNode<any> {
     this.wetMeterData = new Float32Array(this.wetAnalyser.fftSize);
     this.outputMeterData = new Float32Array(this.outputAnalyser.fftSize);
 
+    // A mono vocal should enter the reverb as an explicit stereo-speaker bus so
+    // the two-channel IR and M/S-style width matrix can actually create a stereo
+    // field. Stereo inputs keep their original L/R information.
+    forceStereo(this.inputNode);
+    forceStereo(this.outputNode);
+    [this.dryGain, this.wetGain, this.preDelay, this.lowCut, this.highCut, this.bassShelf, this.dampingFilter].forEach(forceStereo);
+
     const nativeInput = this.inputNode.input as AudioNode;
     const nativeOutput = this.outputNode.input as AudioNode;
+    forceStereo(nativeInput);
+    forceStereo(nativeOutput);
 
     nativeInput.connect(this.dryGain); this.dryGain.connect(nativeOutput);
     nativeInput.connect(this.preDelay);
