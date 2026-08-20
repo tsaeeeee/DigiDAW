@@ -4,6 +4,7 @@ import { cn } from '../lib/utils';
 import { EffectSlot } from '../types/daw';
 import { SaturationMode, calculateSaturationParameters, createSaturationCurve } from '../dsp/saturator/SaturationNode';
 import { PluginKnob } from './PluginKnob';
+import { PluginModeSwitch } from './PluginModeSwitch';
 
 interface SaturatorPreset {
   name: string;
@@ -161,8 +162,8 @@ export function SaturatorModal({
       }
 
       ctx.fillStyle = '#777';
-      ctx.font = '9px monospace';
-      ctx.fillText(`${currentMode} · Drive x${driveAmt.toFixed(2)}`, 8, 14);
+      ctx.font = '9px Kumbh Sans';
+      ctx.fillText(`${currentMode.charAt(0).toUpperCase() + currentMode.slice(1)} · Drive x${driveAmt.toFixed(2)}`, 8, 14);
       frame = requestAnimationFrame(draw);
     };
     draw();
@@ -202,17 +203,13 @@ export function SaturatorModal({
 
         <div className="p-3 bg-[#111115]"><canvas ref={canvasRef} width={444} height={140} className="w-full h-[140px] rounded-lg border border-[#282832]" /></div>
 
-        <div className="px-4 py-2.5 flex items-center justify-center gap-1 bg-[#18181e] border-t border-[#292934]">
-          {modes.map((mode, index) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => updateParam('modeIndex', index)}
-              className={cn('px-4 py-1.5 rounded-full text-[9px] font-black tracking-wider border transition-all', modeIndex === index ? 'bg-gradient-to-r from-[#f472b6] to-[#e879f9] border-[#f472b6] text-black shadow-[0_0_8px_rgba(244,114,182,0.35)]' : 'bg-[#111114] border-[#2d2d38] text-[#777] hover:text-white')}
-            >
-              {mode.charAt(0).toUpperCase() + mode.slice(1)}
-            </button>
-          ))}
+        <div className="px-4 py-2.5 bg-[#18181e] border-t border-[#292934]">
+          <PluginModeSwitch
+            label="Saturation mode"
+            value={modeIndex}
+            options={modes.map((mode, index) => ({ value: index, label: mode }))}
+            onChange={(value) => updateParam('modeIndex', value)}
+          />
         </div>
 
         <div className="px-6 py-4 grid grid-cols-3 gap-4 bg-[#18181e] border-t border-[#292934] justify-items-center">
