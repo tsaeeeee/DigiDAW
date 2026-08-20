@@ -1,36 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Kumbh+Sans:wght,YOPQ@100..900,300&family=Major+Mono+Display&family=Syncopate:wght@400;700&display=swap');
 @import "tailwindcss";
 
-.major-mono-display-regular, .font-number, .major-mono {
-  font-family: "Major Mono Display", monospace;
-  font-weight: 400;
-  font-style: normal;
-}
-
-.syncopate-regular {
-  font-family: "Syncopate", sans-serif;
-  font-weight: 400;
-  font-style: normal;
-}
-
-.syncopate-bold {
-  font-family: "Syncopate", sans-serif;
-  font-weight: 700;
-  font-style: normal;
-}
-
-.kumbh-sans, .kumbh-sans-pure {
-  font-family: "Kumbh Sans", sans-serif;
-  font-optical-sizing: auto;
-  font-style: normal;
-  font-variation-settings: "YOPQ" 300;
-}
+.major-mono-display-regular, .font-number, .major-mono { font-family: "Major Mono Display", monospace; font-weight: 400; font-style: normal; }
+.syncopate-regular { font-family: "Syncopate", sans-serif; font-weight: 400; font-style: normal; }
+.syncopate-bold { font-family: "Syncopate", sans-serif; font-weight: 700; font-style: normal; }
+.kumbh-sans, .kumbh-sans-pure { font-family: "Kumbh Sans", sans-serif; font-optical-sizing: auto; font-style: normal; font-variation-settings: "YOPQ" 300; }
 
 @theme {
   --font-sans: "Kumbh Sans", sans-serif;
   --font-mono: "Kumbh Sans", sans-serif;
   --font-display: "Kumbh Sans", sans-serif;
-  
   --color-bg-base: #121212;
   --color-bg-panel: #1e1e1e;
   --color-bg-header: #2a2a2a;
@@ -39,69 +18,20 @@
 }
 
 @layer base {
-  body {
-    @apply bg-bg-base text-[#e0e0e0] overflow-hidden;
-    font-family: "Kumbh Sans", sans-serif;
-    font-variation-settings: "YOPQ" 300;
-    font-size: 11px;
-    overscroll-behavior: none;
-  }
-
-  button,
-  button:focus,
-  button:focus-visible,
-  button:focus-within,
-  button:active,
-  [role="button"],
-  [role="button"]:focus,
-  [role="button"]:focus-visible {
-    outline: none !important;
-    outline-style: none !important;
-    outline-width: 0 !important;
-    outline-color: transparent !important;
-    border: none;
-    -webkit-tap-highlight-color: transparent;
-  }
+  body { @apply bg-bg-base text-[#e0e0e0] overflow-hidden; font-family: "Kumbh Sans", sans-serif; font-variation-settings: "YOPQ" 300; font-size: 11px; overscroll-behavior: none; }
+  button, button:focus, button:focus-visible, button:focus-within, button:active, [role="button"], [role="button"]:focus, [role="button"]:focus-visible { outline: none !important; outline-style: none !important; outline-width: 0 !important; outline-color: transparent !important; border: none; -webkit-tap-highlight-color: transparent; }
 }
 
-/* LCD Display Font */
-.font-lcd {
-  font-family: "Kumbh Sans", sans-serif;
-  font-variation-settings: "YOPQ" 300;
-}
+.font-lcd { font-family: "Kumbh Sans", sans-serif; font-variation-settings: "YOPQ" 300; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #121212; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #444; }
+input[type="range"].fader-input { appearance: none; background: transparent; cursor: ns-resize; }
+input[type="range"].fader-input::-webkit-slider-thumb { appearance: none; width: 18px; height: 30px; background: #444; border: 1px solid #666; border-radius: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: #121212;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #444;
-}
-
-/* Vertical Slider */
-input[type="range"].fader-input {
-  appearance: none;
-  background: transparent;
-  cursor: ns-resize;
-}
-
-input[type="range"].fader-input::-webkit-slider-thumb {
-  appearance: none;
-  width: 18px;
-  height: 30px;
-  background: #444;
-  border: 1px solid #666;
-  border-radius: 2px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-}
+/* Timeline selection must never visually stretch or zoom the clip. The selected
+   state is border/glow only; this overrides Motion/Tailwind scale transforms on
+   the draggable audio-clip container without changing its timeline width. */
+.cursor-grab.origin-left { transform: none !important; scale: 1 !important; }
+.cursor-grab.origin-left:active { transform: none !important; scale: 1 !important; }
