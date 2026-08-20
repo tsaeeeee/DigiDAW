@@ -3,6 +3,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, Power, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { EffectSlot } from '../types/daw';
 import { PluginKnob } from './PluginKnob';
+import { PluginModeSwitch } from './PluginModeSwitch';
 
 interface LimiterPreset {
   name: string;
@@ -160,12 +161,12 @@ export function BrickwallLimiterModal({
         ctx.stroke();
       };
       drawHistory('input', '#9ca3af', 1.2);
-      drawHistory('output', '#fde047', 2);
+      drawHistory('output', '#facc15', 2);
       frame = requestAnimationFrame(draw);
     };
     draw();
     return () => cancelAnimationFrame(frame);
-  }, [analyser, isPlaying, ceiling, drive, release, isBypassed]);
+  }, [analyser, isPlaying, ceiling, drive, release, isBypassed, metrics.limiting]);
 
   return (
     <div className="fixed inset-0 z-[300] pointer-events-none">
@@ -195,25 +196,23 @@ export function BrickwallLimiterModal({
         <div className="p-3 bg-[#111115]">
           <canvas ref={canvasRef} width={474} height={135} className="w-full h-[135px] rounded-lg border border-[#282832]" />
           <div className="mt-2 grid grid-cols-3 gap-2 text-[9px] font-mono">
-            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">Driven</span><div className="text-[#ddd]">{metrics.input > -75 ? `${metrics.input.toFixed(1)}dB` : '-∞'}</div></div>
-            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">Output</span><div className="text-[#f472b6]">{metrics.output > -75 ? `${metrics.output.toFixed(1)}dB` : '-∞'}</div></div>
-            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">Gain red.</span><div className={metrics.limiting ? 'text-red-400' : 'text-[#ddd]'}>{`${metrics.gr.toFixed(1)}dB`}</div></div>
+            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">DRIVEN</span><div className="text-[#ddd]">{metrics.input > -75 ? `${metrics.input.toFixed(1)}dB` : '-∞'}</div></div>
+            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">OUTPUT</span><div className="text-[#f472b6]">{metrics.output > -75 ? `${metrics.output.toFixed(1)}dB` : '-∞'}</div></div>
+            <div className="rounded bg-[#18181e] border border-[#292934] px-2 py-1.5"><span className="text-[#666]">GAIN RED.</span><div className={metrics.limiting ? 'text-red-400' : 'text-[#ddd]'}>{`${metrics.gr.toFixed(1)}dB`}</div></div>
           </div>
         </div>
 
-        <div className="px-4 py-4 grid grid-cols-5 gap-2 bg-[#18181e] border-t border-[#292934] justify-items-center">
+        <div className="px-4 py-4 grid grid-cols-5 gap-2 bg-[#18181e] border-t border-[#292934] justify-items-center items-end">
           <PluginKnob label="CEILING" leftSubLabel="-24" rightSubLabel="0" value={ceiling} min={-24} max={0} step={0.1} defaultValue={-0.5} displayValue={`${ceiling.toFixed(1)}dB`} size="sm" onChange={(v) => updateParam('ceiling', v)} />
           <PluginKnob label="DRIVE" leftSubLabel="0" rightSubLabel="+24" value={drive} min={0} max={24} step={0.1} defaultValue={4} displayValue={`+${drive.toFixed(1)}dB`} size="sm" onChange={(v) => updateParam('drive', v)} />
           <PluginKnob label="RELEASE" leftSubLabel="FAST" rightSubLabel="SLOW" value={release} min={5} max={1000} step={1} defaultValue={50} displayValue={`${Math.round(release)}ms`} size="sm" isLogarithmic onChange={(v) => updateParam('release', v)} />
           <PluginKnob label="SAT" leftSubLabel="CLEAN" rightSubLabel="ANALOG" value={diodeSat} min={0} max={100} step={1} defaultValue={15} displayValue={`${Math.round(diodeSat)}%`} size="sm" onChange={(v) => updateParam('diodeSat', v)} />
-
-          <button type="button" onClick={() => updateParam('truePeak', truePeak === 1 ? 0 : 1)} className="flex flex-col items-center justify-center gap-2">
-            <div className={cn('w-14 h-8 rounded-full border p-1 flex items-center transition-all', truePeak === 1 ? 'justify-end border-[#f472b6] bg-[#f472b6]/15' : 'justify-start border-[#383842] bg-[#111114]')}>
-              <div className={cn('w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-black', truePeak === 1 ? 'bg-gradient-to-r from-[#f472b6] to-[#e879f9] text-black' : 'bg-[#333] text-[#777]')}>{truePeak === 1 ? 'On' : 'Off'}</div>
-            </div>
-            <div className="text-[9px] text-[#f1f1f4] font-extrabold tracking-widest">True peak</div>
-            <div className="text-[8px] text-[#73737c] font-mono">4x OS</div>
-          </button>
+          <PluginModeSwitch
+            label="True peak"
+            value={truePeak}
+            options={[{ value: 0, label: 'Off' }, { value: 1, label: 'On' }]}
+            onChange={(value) => updateParam('truePeak', value)}
+          />
         </div>
       </div>
     </div>
