@@ -198,7 +198,7 @@ export function EqualizerModal({
       ctx.fillStyle = '#0d0e14';
       ctx.fillRect(0, 0, w, h);
 
-      ctx.font = '9px sans-serif';
+      ctx.font = '9px "Kumbh Sans", sans-serif';
       for (const freq of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
         const x = freqToX(freq, w);
         ctx.strokeStyle = '#1b1c25'; ctx.lineWidth = 1;
@@ -270,7 +270,7 @@ export function EqualizerModal({
         ctx.globalAlpha = band.bypass ? 0.3 : 0.75;
         ctx.fillStyle = band.color; ctx.fill(); ctx.globalAlpha = 1;
         ctx.strokeStyle = active ? '#fff' : band.color; ctx.lineWidth = active ? 2 : 1; ctx.stroke();
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(band.id), x, y);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 9px "Kumbh Sans", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(band.id), x, y);
       });
       ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
       frame = requestAnimationFrame(draw);
