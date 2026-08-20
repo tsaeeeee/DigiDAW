@@ -24,6 +24,16 @@ interface ActivityPoint {
 const HISTORY_LENGTH = 64;
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
+const EMPTY_TELEMETRY: DeEsserTelemetry = {
+  reductionDb: 0,
+  detectorDb: -120,
+  rawSibilanceDb: -120,
+  broadbandDb: -120,
+  prominenceDb: -120,
+  triggerExcessDb: 0,
+  backend: 'loading',
+};
+
 function buildActivityArea(history: ActivityPoint[], width: number, height: number) {
   if (history.length < 2) return '';
   const center = height / 2;
@@ -68,22 +78,14 @@ export function DeEsserModal({
     onUpdateParams(slotIndex, bypassed, { ...params, [key]: value });
   };
 
-  const [telemetry, setTelemetry] = useState<DeEsserTelemetry>({
-    reductionDb: 0,
-    detectorDb: -120,
-    backend: 'loading',
-  });
+  const [telemetry, setTelemetry] = useState<DeEsserTelemetry>(EMPTY_TELEMETRY);
   const [history, setHistory] = useState<ActivityPoint[]>(() =>
     Array.from({ length: HISTORY_LENGTH }, () => ({ detectorDb: -120, reductionDb: 0 })),
   );
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      const next = DeEsserNode.lastActiveInstance?.getTelemetry() || {
-        reductionDb: 0,
-        detectorDb: -120,
-        backend: 'loading' as const,
-      };
+      const next = DeEsserNode.lastActiveInstance?.getTelemetry() || EMPTY_TELEMETRY;
       setTelemetry(next);
       setHistory((previous) => [
         ...previous.slice(-(HISTORY_LENGTH - 1)),
@@ -96,7 +98,9 @@ export function DeEsserModal({
   const lowFreq = get('lowFreq', 4500);
   const highFreq = get('highFreq', 9500);
   const threshold = get('threshold', -28);
-  const ratio = get('ratio', 6);
+  const detection = get('detection', 65);
+  const legacyRatio = get('ratio', 6);
+  const amountDb = params.amountDb ?? clamp((legacyRatio - 1) * 1.4, 0, 18);
   const attack = get('attack', 3);
   const release = get('release', 80);
   const mode = get('mode', 0);
@@ -105,7 +109,7 @@ export function DeEsserModal({
   const activityPath = buildActivityArea(history, 580, 128);
   const reductionPath = buildReductionPath(history, 580, 128);
   const reductionPercent = clamp(telemetry.reductionDb / 18, 0, 1) * 100;
-  const detectorActive = telemetry.detectorDb > threshold;
+  const detectorActive = telemetry.triggerExcessDb > 0.1;
 
   return (
     <PluginFrame
@@ -150,36 +154,23 @@ export function DeEsserModal({
               </defs>
 
               {[0.25, 0.5, 0.75].map((position) => (
-                <line
-                  key={position}
-                  x1="0"
-                  x2="580"
-                  y1={128 * position}
-                  y2={128 * position}
-                  stroke="#1d3036"
-                  strokeWidth="1"
-                />
+                <line key={position} x1="0" x2="580" y1={128 * position} y2={128 * position} stroke="#1d3036" strokeWidth="1" />
               ))}
               <line x1="0" x2="580" y1="64" y2="64" stroke="#31515b" strokeWidth="1" />
 
-              {activityPath && (
-                <path d={activityPath} fill={`url(#disser-activity-${slotIndex})`} stroke="#22d3ee" strokeWidth="1.25" />
-              )}
+              {activityPath && <path d={activityPath} fill={`url(#disser-activity-${slotIndex})`} stroke="#22d3ee" strokeWidth="1.25" />}
               {reductionPath && (
-                <path
-                  d={reductionPath}
-                  fill="none"
-                  stroke="#a5f3fc"
-                  strokeOpacity="0.8"
-                  strokeWidth="1.5"
-                  strokeDasharray="3 3"
-                />
+                <path d={reductionPath} fill="none" stroke="#a5f3fc" strokeOpacity="0.8" strokeWidth="1.5" strokeDasharray="3 3" />
               )}
             </svg>
 
             <div className="absolute left-3 bottom-2 flex gap-3 text-[8px] font-bold text-[#53646b]">
-              <span>Detector</span>
-              <span className="text-[#9fb0b6]">{telemetry.detectorDb > -100 ? `${telemetry.detectorDb.toFixed(1)} dB` : '—'}</span>
+              <span>S band</span>
+              <span className="text-[#9fb0b6]">{telemetry.rawSibilanceDb > -100 ? `${telemetry.rawSibilanceDb.toFixed(1)} dB` : '—'}</span>
+              <span>Relative</span>
+              <span className="text-[#9fb0b6]">{telemetry.prominenceDb > -100 ? `${telemetry.prominenceDb.toFixed(1)} dB` : '—'}</span>
+              <span>Trigger</span>
+              <span style={{ color: detectorActive ? '#67e8f9' : '#718087' }}>{`${telemetry.triggerExcessDb.toFixed(1)} dB`}</span>
             </div>
             <div className="absolute right-3 bottom-2 text-[8px] font-bold text-[#53646b]">
               {telemetry.backend === 'worklet' ? 'Dynamic split engine' : telemetry.backend === 'native-fallback' ? 'Compatibility engine' : 'Loading DSP…'}
@@ -202,19 +193,19 @@ export function DeEsserModal({
       <div className="px-4 pb-4">
         <div className="grid grid-cols-[150px_1fr_205px] gap-3 items-stretch">
           <div className="rounded-xl border border-[#292d32] bg-[#17191d] p-3 flex flex-col items-center justify-center">
-            <div className="text-[8px] font-extrabold tracking-widest text-[#667078] mb-2">Control</div>
+            <div className="text-[8px] font-extrabold tracking-widest text-[#667078] mb-2">Detector</div>
             <PluginKnob
-              label="Reduction"
-              leftSubLabel="Gentle"
-              rightSubLabel="Firm"
-              value={ratio}
-              min={1}
-              max={20}
-              step={0.1}
-              defaultValue={6}
-              displayValue={`${ratio.toFixed(1)}:1`}
+              label="Detection"
+              leftSubLabel="Selective"
+              rightSubLabel="Sensitive"
+              value={detection}
+              min={0}
+              max={100}
+              step={1}
+              defaultValue={65}
+              displayValue={`${Math.round(detection)}%`}
               size="lg"
-              onChange={(value) => update('ratio', value)}
+              onChange={(value) => update('detection', value)}
             />
           </div>
 
@@ -276,18 +267,28 @@ export function DeEsserModal({
             <PluginModeSwitch
               label="Mode"
               value={mode}
-              options={[
-                { value: 0, label: 'Split' },
-                { value: 1, label: 'Wide' },
-              ]}
+              options={[{ value: 0, label: 'Split' }, { value: 1, label: 'Wide' }]}
               onChange={(value) => update('mode', value)}
               className="w-full mt-2"
             />
           </div>
         </div>
 
-        <div className="mt-3 pt-3 border-t border-[#292d32] flex items-end justify-between gap-4">
-          <div className="flex items-start gap-5 pl-2">
+        <div className="mt-3 pt-3 border-t border-[#292d32] flex items-end justify-between gap-3">
+          <div className="flex items-start gap-4 pl-1">
+            <PluginKnob
+              label="Reduction"
+              leftSubLabel="Gentle"
+              rightSubLabel="Deep"
+              value={amountDb}
+              min={0}
+              max={18}
+              step={0.5}
+              defaultValue={8}
+              displayValue={`${amountDb.toFixed(1)} dB`}
+              size="sm"
+              onChange={(value) => update('amountDb', value)}
+            />
             <PluginKnob
               label="Attack"
               leftSubLabel="Fast"
@@ -321,12 +322,9 @@ export function DeEsserModal({
           <PluginModeSwitch
             label="Monitor"
             value={listen}
-            options={[
-              { value: 0, label: 'Normal' },
-              { value: 1, label: 'Listen' },
-            ]}
+            options={[{ value: 0, label: 'Normal' }, { value: 1, label: 'Listen' }]}
             onChange={(value) => update('listen', value)}
-            className="w-[190px]"
+            className="w-[185px]"
           />
         </div>
       </div>
