@@ -29,7 +29,7 @@ function createLimiterCurve(limitLinear: number, enabled: number, length = 2048)
   return curve;
 }
 
-export const createDefaultEffects = (): EffectSlot[] => Array.from({ length: 5 }, () => ({ id: crypto.randomUUID(), type: null, bypassed: false }));
+export const createDefaultEffects = (): EffectSlot[] => Array.from({ length: 7 }, () => ({ id: crypto.randomUUID(), type: null, bypassed: false }));
 
 function getAudioNodeInput(node: any): any {
   if (!node) return null;
@@ -56,6 +56,17 @@ export function safeDisconnect(node: any) {
   if (!node) return;
   try { if (typeof node.disconnect === 'function') node.disconnect(); } catch {}
   try { const out = getAudioNodeOutput(node); if (out && out !== node && typeof out.disconnect === 'function') out.disconnect(); } catch {}
+}
+
+function configureStereoBus(node: any) {
+  if (!node) return;
+  const candidates = [node, node.input, node.output, node._gainNode];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try { if ('channelCount' in candidate) candidate.channelCount = 2; } catch {}
+    try { if ('channelCountMode' in candidate) candidate.channelCountMode = 'explicit'; } catch {}
+    try { if ('channelInterpretation' in candidate) candidate.channelInterpretation = 'speakers'; } catch {}
+  }
 }
 
 function getDelayTimeSeconds(p: Record<string, number>) {
@@ -101,6 +112,13 @@ export class StereoChannel {
   private disposedInternal = false;
 
   constructor(_context?: BaseAudioContext) {
+    // Track and master buses are explicitly stereo. Mono sources are upmixed
+    // using speaker semantics at the bus boundary, while native stereo files
+    // and stereo-generating effects preserve independent L/R channels.
+    [this.input, this.output, this.preFaderNode, this.volNode].forEach(configureStereoBus);
+    try { (this.panner as any).channelCount = 2; } catch {}
+    try { (this.panner as any).channelInterpretation = 'speakers'; } catch {}
+
     safeConnect(this.preFaderNode, this.preFaderMeter);
     safeConnect(this.preFaderNode, this.fft);
     safeConnect(this.input, this.preFaderNode);
@@ -189,7 +207,7 @@ export function useAudioEngine() {
   const setMetronomeEnabled=useCallback((v:boolean)=>{metronomeEnabledRef.current=v;setMetronomeEnabledState(v);},[]);
   const createTrackAudioNodes=useCallback((track:Track,master:StereoChannel)=>{const c=new StereoChannel();c.setVolume(track.volume);c.setPan(track.pan);c.setEffects(track.effects||createDefaultEffects());c.connect(master.input);const meter=new Tone.Meter({channelCount:2});c.connect(meter);channelsRef.current.set(track.id,c);analysersRef.current.set(track.id,{meter,fft:c.fft,preFaderMeter:c.preFaderMeter});},[]);
 
-  const init=useCallback(async()=>{if(isInitialized||initializingRef.current)return;initializingRef.current=true;try{await Tone.start();if(Tone.context.state!=='running')await Tone.context.resume();Tone.Transport.bpm.value=bpmRef.current;if(metronomeEventIdRef.current===null){metronomeEventIdRef.current=Tone.Transport.scheduleRepeat((time)=>{const beat=Math.floor(Math.round(Tone.Transport.ticks/(Tone.Transport.PPQ||192)))%4;setCurrentBeat(beat);if(!metronomeEnabledRef.current)return;const raw=Tone.getContext().rawContext;const osc=raw.createOscillator(),gain=raw.createGain();osc.type='triangle';osc.frequency.setValueAtTime(beat===0?1760:980,time);gain.gain.setValueAtTime(beat===0?.85:.6,time);gain.gain.exponentialRampToValueAtTime(.0001,time+.045);osc.connect(gain);if(masterChannelRef.current)gain.connect(masterChannelRef.current.input.input as AudioNode);else gain.connect(raw.destination);osc.start(time);osc.stop(time+.05);},'4n');}
+  const init=useCallback(async()=>{if(isInitialized||initializingRef.current)return;initializingRef.current=true;try{await Tone.start();if(Tone.context.state!=='running')await Tone.context.resume();configureStereoBus(Tone.getDestination());Tone.Transport.bpm.value=bpmRef.current;if(metronomeEventIdRef.current===null){metronomeEventIdRef.current=Tone.Transport.scheduleRepeat((time)=>{const beat=Math.floor(Math.round(Tone.Transport.ticks/(Tone.Transport.PPQ||192)))%4;setCurrentBeat(beat);if(!metronomeEnabledRef.current)return;const raw=Tone.getContext().rawContext;const osc=raw.createOscillator(),gain=raw.createGain();osc.type='triangle';osc.frequency.setValueAtTime(beat===0?1760:980,time);gain.gain.setValueAtTime(beat===0?.85:.6,time);gain.gain.exponentialRampToValueAtTime(.0001,time+.045);osc.connect(gain);if(masterChannelRef.current)gain.connect(masterChannelRef.current.input.input as AudioNode);else gain.connect(raw.destination);osc.start(time);osc.stop(time+.05);},'4n');}
    const master=new StereoChannel();master.setVolume(masterParams.volume);master.setPan(masterParams.pan);master.setEffects(masterParams.effects);master.connect(Tone.getDestination());const meter=new Tone.Meter({channelCount:2});master.connect(meter);masterChannelRef.current=master;masterAnalyserRef.current={meter,fft:master.fft,preFaderMeter:master.preFaderMeter};const initial=Array.from({length:INITIAL_TRACK_COUNT},(_,i):Track=>({id:crypto.randomUUID(),name:`Track ${i+1}`,color:COLORS[i%COLORS.length],clips:[],muted:false,soloed:false,volume:0,pan:0,effects:createDefaultEffects()}));initial.forEach(t=>createTrackAudioNodes(t,master));tracksRef.current=initial;setTracks(initial);setIsInitialized(true);}catch(err){console.error('Failed to initialize audio engine:',err);}finally{initializingRef.current=false;}},[createTrackAudioNodes,isInitialized,masterParams]);
 
   useEffect(()=>{const id=window.setInterval(()=>{if(Tone.Transport.state==='started')setCurrentTime(Tone.Transport.seconds);},50);return()=>window.clearInterval(id);},[]);
@@ -208,7 +226,7 @@ export function useAudioEngine() {
   const updateMasterParams=useCallback((_id:string,params:Partial<{volume:number;pan:number}>)=>setMasterParams(prev=>{const u={...prev,...params};if(params.volume!==undefined)masterChannelRef.current?.setVolume(u.volume);if(params.pan!==undefined)masterChannelRef.current?.setPan(u.pan);return u;}),[]);
   const updateMasterEffect=useCallback((index:number,type:EffectType|null,bypassed?:boolean,params?:Record<string,number>)=>setMasterParams(prev=>{const fx=prev.effects?[...prev.effects]:createDefaultEffects();while(fx.length<=index)fx.push({id:crypto.randomUUID(),type:null,bypassed:false});const old=fx[index];fx[index]={...old,type,bypassed:bypassed!==undefined?bypassed:old.bypassed,params:params!==undefined?{...(old.params||{}),...params}:old.params};masterChannelRef.current?.setEffects(fx);return{...prev,effects:fx};}),[]);
 
-  const renderAudio=useCallback(async()=>{if(isRendering)return;const snap=tracksRef.current;let end=0,trackTail=0;snap.forEach(t=>{t.clips.forEach(c=>end=Math.max(end,c.startTime+c.duration));trackTail=Math.max(trackTail,estimateEffectsTail(t.effects));});if(end<=0)return;const len=end+clamp(trackTail+estimateEffectsTail(masterParams.effects),.25,30)+.1;setIsRendering(true);try{const rendered=await Tone.Offline(async()=>{Tone.Transport.bpm.value=bpmRef.current;const master=new StereoChannel();master.setVolume(masterParams.volume);master.setPan(masterParams.pan);master.setEffects(masterParams.effects);master.connect(Tone.getDestination());const solo=snap.some(t=>t.soloed);for(const t of snap){if(!(solo?t.soloed&&!t.muted:!t.muted))continue;const c=new StereoChannel();c.setVolume(t.volume);c.setPan(t.pan);c.setEffects(t.effects||createDefaultEffects());c.connect(master.input);for(const clip of t.clips){if(!clip.buffer)continue;new Tone.Player(clip.buffer).start(clip.startTime).connect(c.input);}}},len);const raw=(rendered as any)?.get?(rendered as any).get():rendered as unknown as AudioBuffer;const wav=audioBufferToWav(raw);const blob=new Blob([wav],{type:'audio/wav'}),url=URL.createObjectURL(blob);const a=document.createElement('a');a.download=`DigiDAW-Rendered-${Date.now()}.wav`;a.href=url;a.click();setTimeout(()=>URL.revokeObjectURL(url),0);}catch(err){console.error('Render failed:',err);}finally{setIsRendering(false);}},[isRendering,masterParams]);
+  const renderAudio=useCallback(async()=>{if(isRendering)return;const snap=tracksRef.current;let end=0,trackTail=0;snap.forEach(t=>{t.clips.forEach(c=>end=Math.max(end,c.startTime+c.duration));trackTail=Math.max(trackTail,estimateEffectsTail(t.effects));});if(end<=0)return;const len=end+clamp(trackTail+estimateEffectsTail(masterParams.effects),.25,30)+.1;setIsRendering(true);try{const rendered=await Tone.Offline(async()=>{configureStereoBus(Tone.getDestination());Tone.Transport.bpm.value=bpmRef.current;const master=new StereoChannel();master.setVolume(masterParams.volume);master.setPan(masterParams.pan);master.setEffects(masterParams.effects);master.connect(Tone.getDestination());const solo=snap.some(t=>t.soloed);for(const t of snap){if(!(solo?t.soloed&&!t.muted:!t.muted))continue;const c=new StereoChannel();c.setVolume(t.volume);c.setPan(t.pan);c.setEffects(t.effects||createDefaultEffects());c.connect(master.input);for(const clip of t.clips){if(!clip.buffer)continue;new Tone.Player(clip.buffer).start(clip.startTime).connect(c.input);}}},len,2);const raw=(rendered as any)?.get?(rendered as any).get():rendered as unknown as AudioBuffer;const wav=audioBufferToWav(raw);const blob=new Blob([wav],{type:'audio/wav'}),url=URL.createObjectURL(blob);const a=document.createElement('a');a.download=`DigiDAW-Rendered-${Date.now()}.wav`;a.href=url;a.click();setTimeout(()=>URL.revokeObjectURL(url),0);}catch(err){console.error('Render failed:',err);}finally{setIsRendering(false);}},[isRendering,masterParams]);
   const normalizeGain=useCallback((trackIds:string[]=[],clipIds:string[]=[],targetPeakDb=-1)=>{const target=Math.pow(10,targetPeakDb/20);let count=0;const next=tracksRef.current.map(t=>{const targeted=trackIds.includes(t.id);const clips=t.clips.map((c,idx)=>{if(!(clipIds.includes(c.id)||targeted||(clipIds.length===0&&trackIds.length===0))||!c.buffer)return c;let peak=0;for(let ch=0;ch<c.buffer.numberOfChannels;ch++){const d=c.buffer.getChannelData(ch);for(let i=0;i<d.length;i++)peak=Math.max(peak,Math.abs(d[i]));}if(peak<1e-6)return c;const out=new AudioBuffer({numberOfChannels:c.buffer.numberOfChannels,length:c.buffer.length,sampleRate:c.buffer.sampleRate}),scale=target/peak;for(let ch=0;ch<c.buffer.numberOfChannels;ch++){const src=c.buffer.getChannelData(ch),dst=out.getChannelData(ch);for(let i=0;i<src.length;i++)dst[i]=src[i]*scale;}try{playersRef.current.get(t.id)?.[idx]?.buffer.set(out);}catch{}count++;return{...c,buffer:out};});return{...t,clips};});if(count){tracksRef.current=next;setTracks(next);}return count;},[]);
 
   return {tracks,master:{...masterParams,id:'master',name:'Master',color:'#ffd900'},transportState,currentTime,bpm,setBpm,metronomeEnabled,toggleMetronome,setMetronomeEnabled,currentBeat,isInitialized,isRendering,renderAudio,normalizeGain,init,togglePlay,stop,seek,addTrack,removeTrack,updateTrackName,uploadClip,updateClipPosition,updateTrackParams,updateMasterParams,updateTrackEffect,updateMasterEffect,analysers:analysersRef.current,masterAnalyser:masterAnalyserRef.current};
