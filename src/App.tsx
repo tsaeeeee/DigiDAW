@@ -596,7 +596,7 @@ function TrackHeader({ track, isSelected, onSelect, updateParams, onUpload, onDe
             ref={fileInputRef} 
             type="file" 
             accept="audio/*" 
-            className="hidden" 
+            className="hidden"
             onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
           />
         </div>
@@ -758,12 +758,13 @@ function AudioClipItem({ clip, color, isSelected, onSelect, onMove, getSnapPoint
       if (!didMove) return;
       
       const rawTime = Math.max(0, startStartTime.current + delta);
-      // Snap during drag: when within threshold of a snap target, the clip
-      // head visually locks onto the cyan line; outside, it follows the mouse.
-      const { time, snappedAt } = applySnap(rawTime, clip.duration, points, thresholdSeconds, snapEnabled, grabOffsetSeconds);
+      // Holding Shift temporarily bypasses snapping without changing the user's
+      // persistent Snap preference. Release Shift mid-drag and snapping resumes.
+      const snapThisMove = snapEnabled && !moveEvent.shiftKey;
+      const { time, snappedAt } = applySnap(rawTime, clip.duration, points, thresholdSeconds, snapThisMove, grabOffsetSeconds);
 
       setVisualStartTime(time);
-      onSnapIndicator(snappedAt);
+      onSnapIndicator(snapThisMove ? snappedAt : null);
     };
 
     const handleMouseUp = (upEvent: MouseEvent) => {
@@ -771,8 +772,8 @@ function AudioClipItem({ clip, color, isSelected, onSelect, onMove, getSnapPoint
         const currentXLocal = upEvent.clientX - timelineRect.left;
         const delta = (currentXLocal - startXLocal) / zoom;
         const rawTime = Math.max(0, startStartTime.current + delta);
-        
-        const { time } = applySnap(rawTime, clip.duration, points, thresholdSeconds, snapEnabled, grabOffsetSeconds);
+        const snapThisDrop = snapEnabled && !upEvent.shiftKey;
+        const { time } = applySnap(rawTime, clip.duration, points, thresholdSeconds, snapThisDrop, grabOffsetSeconds);
         onMove(time);
         
         const suppressClick = (clickEvent: MouseEvent) => {
