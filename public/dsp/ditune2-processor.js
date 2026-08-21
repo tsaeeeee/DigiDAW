@@ -90,4 +90,4 @@ class Ditune2WasmProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('ditune2-wasm-v1', Ditune2WasmProcessor);
+registerProcessor('ditune2-wasm-v2', Ditune2WasmProcessor);
