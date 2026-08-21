@@ -1,0 +1,1 @@
+Ditune2 browser runtime expects a binary `public/dsp/ditune2-core.wasm` built from `native/ditune2/Ditune2Engine.cpp` + `Ditune2Wasm.cpp`. The adjacent native project wraps the same engine in JUCE for VST3/AU/Standalone builds.
