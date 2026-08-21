@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Power, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { EffectSlot, EffectType } from '../types/daw';
@@ -55,7 +55,29 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
   const [picker, setPicker] = useState<number | null>(null);
   const [openWindows, setOpenWindows] = useState<OpenPluginWindow[]>([]);
   const lastFocusedSlot = useRef<number | null>(null);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
   const slots = Array.from({ length: SLOTS }, (_, i) => effects[i] || { id: `slot-${i}`, type: null, bypassed: false });
+
+  useEffect(() => {
+    if (picker === null) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!pickerRef.current?.contains(target)) setPicker(null);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPicker(null);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [picker]);
 
   const focusWindow = (index: number) => {
     const zIndex = nextPluginZ();
@@ -118,7 +140,18 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
       })}
     </div>
 
-    {picker !== null && <div className="absolute top-[86px] left-0 z-[420] w-44 rounded-md border border-[#34343d] bg-[#17171d] p-1.5 shadow-2xl">
+    {picker !== null && <div ref={pickerRef} className="absolute top-[86px] left-0 z-[420] w-44 rounded-md border border-[#34343d] bg-[#17171d] p-1.5 shadow-2xl">
+      <div className="mb-1 flex items-center justify-between border-b border-[#292932] px-1 pb-1">
+        <span className="text-[7px] font-black tracking-[0.16em] text-[#696975]">SELECT EFFECT</span>
+        <button
+          type="button"
+          aria-label="Close effect picker"
+          onClick={() => setPicker(null)}
+          className="rounded p-0.5 text-[#72727d] hover:bg-[#282832] hover:text-white"
+        >
+          <X className="h-2.5 w-2.5" />
+        </button>
+      </div>
       {DEDICATED_EFFECTS.map(meta => <button key={meta.type} onClick={() => { onUpdateEffect(picker, meta.type, false); openPluginWindow(picker, meta.type); setPicker(null); }} className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-[#282832] text-left"><span className="min-w-[38px] px-1 py-0.5 rounded-[2px] text-center text-[7px] font-black text-black" style={{ backgroundColor: meta.color }}>{meta.shortCode}</span><span className="text-[9px] text-white font-bold truncate">{meta.name}</span></button>)}
     </div>}
 
