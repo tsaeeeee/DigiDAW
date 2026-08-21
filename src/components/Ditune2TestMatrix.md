@@ -1,1 +1,0 @@
-Temporary implementation note: validate Ditune2 in browser by confirming `ditune2-processor.js` and binary `ditune2-core.wasm` load, then compare the same vocal against Ditune v1. Remove this note after runtime validation.
