@@ -17,15 +17,21 @@ export interface Ditune2Telemetry {
   correctionCents: number;
   targetMidi: number;
   isTracking: boolean;
+  inputRms: number;
+  detectorQuality: number;
+  analysisReady: boolean;
+  voicedHoldMs: number;
   backend: 'loading' | 'wasm' | 'passthrough';
 }
 
+type ResourceState = { wasmBytes: Uint8Array; addModuleError: unknown | null };
 type Ditune2Context = BaseAudioContext & {
   audioWorklet?: AudioWorklet;
-  __digidawDitune2Resources?: Promise<{ wasmBytes: Uint8Array; addModuleError: unknown | null }>;
+  __digidawDitune2ResourcesV2?: Promise<ResourceState>;
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const RESOURCE_VERSION = 'detector-v02';
 
 export class Ditune2Node extends Tone.ToneAudioNode<any> {
   readonly name = 'Ditune2Node';
@@ -43,6 +49,8 @@ export class Ditune2Node extends Tone.ToneAudioNode<any> {
   private workletNode: AudioWorkletNode | null = null;
   private passthroughNode: Tone.Gain | null = null;
   private activationTimer: ReturnType<typeof setTimeout> | null = null;
+  private readyTimer: ReturnType<typeof setTimeout> | null = null;
+  private workletReady = false;
   private disposedInternal = false;
   private params: Ditune2Params = {};
   private backend: Ditune2Telemetry['backend'] = 'loading';
@@ -54,6 +62,10 @@ export class Ditune2Node extends Tone.ToneAudioNode<any> {
     correctionCents: 0,
     targetMidi: 0,
     isTracking: false,
+    inputRms: 0,
+    detectorQuality: 0,
+    analysisReady: false,
+    voicedHoldMs: 0,
   };
 
   constructor(params: Ditune2Params = {}) {
@@ -83,39 +95,39 @@ export class Ditune2Node extends Tone.ToneAudioNode<any> {
 
   private static ensureResources(context: BaseAudioContext) {
     const ctx = context as Ditune2Context;
-    if (ctx.__digidawDitune2Resources) return ctx.__digidawDitune2Resources;
+    if (ctx.__digidawDitune2ResourcesV2) return ctx.__digidawDitune2ResourcesV2;
     if (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined') {
       return Promise.reject(new Error('AudioWorklet is unavailable in this context'));
     }
 
     const base = Ditune2Node.baseUrl();
-    const promise = (async () => {
-      const response = await fetch(`${base}dsp/ditune2-core.wasm`);
+    const promise = (async (): Promise<ResourceState> => {
+      const response = await fetch(`${base}dsp/ditune2-core.wasm?v=${RESOURCE_VERSION}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`Ditune2 WASM fetch failed: HTTP ${response.status}`);
       const wasmBytes = new Uint8Array(await response.arrayBuffer());
       let addModuleError: unknown | null = null;
       try {
-        await ctx.audioWorklet!.addModule(`${base}dsp/ditune2-processor.js`);
+        await ctx.audioWorklet!.addModule(`${base}dsp/ditune2-processor.js?v=${RESOURCE_VERSION}`);
       } catch (error) {
         addModuleError = error;
       }
       return { wasmBytes, addModuleError };
     })().catch((error) => {
-      delete ctx.__digidawDitune2Resources;
+      delete ctx.__digidawDitune2ResourcesV2;
       throw error;
     });
 
-    ctx.__digidawDitune2Resources = promise;
+    ctx.__digidawDitune2ResourcesV2 = promise;
     return promise;
   }
 
   private async initialize() {
-    let resources: { wasmBytes: Uint8Array; addModuleError: unknown | null } | null = null;
+    let resources: ResourceState | null = null;
     try {
       resources = await Ditune2Node.ensureResources(this.raw);
       if (this.disposedInternal) return;
       const p = this.normalizedParams();
-      const node = new AudioWorkletNode(this.raw, 'ditune2-wasm-v1', {
+      const node = new AudioWorkletNode(this.raw, 'ditune2-wasm-v2', {
         numberOfInputs: 1,
         numberOfOutputs: 1,
         outputChannelCount: [2],
@@ -134,9 +146,17 @@ export class Ditune2Node extends Tone.ToneAudioNode<any> {
       });
 
       node.port.onmessage = (event: MessageEvent) => {
-        if (event.data?.type === 'ready') return;
+        if (event.data?.type === 'ready') {
+          if (this.disposedInternal || this.workletReady) return;
+          this.workletReady = true;
+          this.backend = 'wasm';
+          if (this.readyTimer) clearTimeout(this.readyTimer);
+          this.readyTimer = null;
+          this.activateProcessedPath();
+          return;
+        }
         if (event.data?.type === 'error') {
-          console.error('Ditune2 WASM processor initialization error:', event.data.message);
+          this.fallbackToPassthrough(new Error(String(event.data.message || 'Ditune2 WASM processor error')));
           return;
         }
         if (event.data?.type !== 'telemetry') return;
@@ -148,29 +168,52 @@ export class Ditune2Node extends Tone.ToneAudioNode<any> {
           correctionCents: clamp(Number(event.data.correctionCents) || 0, -200, 200),
           targetMidi: Number(event.data.targetMidi) || 0,
           isTracking: !!event.data.isTracking,
+          inputRms: Math.max(0, Number(event.data.inputRms) || 0),
+          detectorQuality: clamp(Number(event.data.detectorQuality) || 0, 0, 1),
+          analysisReady: !!event.data.analysisReady,
+          voicedHoldMs: Math.max(0, Number(event.data.voicedHoldMs) || 0),
         };
       };
-      node.onprocessorerror = () => console.error('Ditune2 WASM AudioWorklet processor error.');
+      node.onprocessorerror = () => this.fallbackToPassthrough(new Error('Ditune2 AudioWorklet processor crashed'));
 
       this.workletNode = node;
-      this.backend = 'wasm';
       Tone.connect(this.inputNode, node);
       Tone.connect(node, this.processed);
       this.applyWorkletParams(true);
-      this.activateProcessedPath();
+
+      this.readyTimer = setTimeout(() => {
+        this.readyTimer = null;
+        if (!this.workletReady && !this.disposedInternal) {
+          this.fallbackToPassthrough(new Error('Ditune2 WASM processor did not report ready within 1500 ms'));
+        }
+      }, 1500);
       return;
     } catch (error) {
       if (this.disposedInternal) return;
-      console.warn(
-        'Ditune2 C++/WASM backend unavailable; using transparent passthrough. Existing Ditune is unaffected.',
-        error,
-        resources?.addModuleError || '',
-      );
+      console.warn('Ditune2 C++/WASM backend unavailable.', error, resources?.addModuleError || '');
+      this.fallbackToPassthrough(error);
+    }
+  }
+
+  private fallbackToPassthrough(reason: unknown) {
+    if (this.disposedInternal || this.backend === 'passthrough') return;
+    console.warn('Ditune2 using transparent passthrough; WASM processing is not active.', reason);
+    if (this.readyTimer) clearTimeout(this.readyTimer);
+    this.readyTimer = null;
+    this.workletReady = false;
+
+    if (this.workletNode) {
+      try { this.workletNode.port.close(); } catch {}
+      try { this.inputNode.disconnect(this.workletNode as any); } catch {}
+      try { this.workletNode.disconnect(); } catch {}
+      this.workletNode = null;
     }
 
-    this.passthroughNode = new Tone.Gain({ context: this.context, gain: 1 });
-    this.inputNode.connect(this.passthroughNode);
-    this.passthroughNode.connect(this.processed);
+    if (!this.passthroughNode) {
+      this.passthroughNode = new Tone.Gain({ context: this.context, gain: 1 });
+      this.inputNode.connect(this.passthroughNode);
+      this.passthroughNode.connect(this.processed);
+    }
     this.backend = 'passthrough';
     this.activateProcessedPath();
   }
@@ -192,6 +235,7 @@ export class Ditune2Node extends Tone.ToneAudioNode<any> {
       if (dry) dry.gain.value = 0;
     }
 
+    if (!dry) return;
     if (this.activationTimer) clearTimeout(this.activationTimer);
     this.activationTimer = setTimeout(() => {
       this.activationTimer = null;
@@ -255,7 +299,9 @@ export class Ditune2Node extends Tone.ToneAudioNode<any> {
     if (this.disposedInternal) return this;
     this.disposedInternal = true;
     if (this.activationTimer) clearTimeout(this.activationTimer);
+    if (this.readyTimer) clearTimeout(this.readyTimer);
     this.activationTimer = null;
+    this.readyTimer = null;
 
     Ditune2Node.instances.delete(this);
     if (Ditune2Node.lastActiveInstance === this) {
