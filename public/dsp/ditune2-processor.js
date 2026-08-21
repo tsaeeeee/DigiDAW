@@ -69,7 +69,7 @@ class Ditune2WasmProcessor extends AudioWorkletProcessor {
       for (let i = 0; i < frames; i++) dst[i] = this.memoryF32[srcPtr + i];
     }
 
-    if (++this.telemetryDivider >= 12) {
+    if (++this.telemetryDivider >= 8) {
       this.telemetryDivider = 0;
       this.port.postMessage({
         type: 'telemetry',
@@ -80,6 +80,10 @@ class Ditune2WasmProcessor extends AudioWorkletProcessor {
         correctionCents: this.exports.ditune2_correction_cents(),
         targetMidi: this.exports.ditune2_target_midi(),
         isTracking: this.exports.ditune2_tracking() >= 0.5,
+        inputRms: this.exports.ditune2_input_rms ? this.exports.ditune2_input_rms() : 0,
+        detectorQuality: this.exports.ditune2_detector_quality ? this.exports.ditune2_detector_quality() : 0,
+        analysisReady: this.exports.ditune2_analysis_ready ? this.exports.ditune2_analysis_ready() >= 0.5 : false,
+        voicedHoldMs: this.exports.ditune2_voiced_hold_ms ? this.exports.ditune2_voiced_hold_ms() : 0,
       });
     }
     return true;
