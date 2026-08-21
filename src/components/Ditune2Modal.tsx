@@ -17,9 +17,20 @@ interface Props {
 }
 
 const EMPTY: Ditune2Telemetry = {
-  detectedHz: 0, targetHz: 0, confidence: 0, centsDeviation: 0,
-  correctionCents: 0, targetMidi: 0, isTracking: false, backend: 'loading',
+  detectedHz: 0,
+  targetHz: 0,
+  confidence: 0,
+  centsDeviation: 0,
+  correctionCents: 0,
+  targetMidi: 0,
+  isTracking: false,
+  inputRms: 0,
+  detectorQuality: 0,
+  analysisReady: false,
+  voicedHoldMs: 0,
+  backend: 'loading',
 };
+
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const midiToName = (midi: number) => {
   if (!Number.isFinite(midi) || midi <= 0) return '—';
@@ -27,6 +38,7 @@ const midiToName = (midi: number) => {
   return `${NOTE_NAMES[((rounded % 12) + 12) % 12]}${Math.floor(rounded / 12) - 1}`;
 };
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const gainToDb = (gain: number) => 20 * Math.log10(Math.max(1e-9, gain));
 
 export function Ditune2Modal({ slot, slotIndex, onUpdateParams, onClose, zIndex, onFocus }: Props) {
   const params = slot.params || {};
@@ -42,13 +54,16 @@ export function Ditune2Modal({ slot, slotIndex, onUpdateParams, onClose, zIndex,
   const [telemetry, setTelemetry] = useState<Ditune2Telemetry>(EMPTY);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setTelemetry(Ditune2Node.lastActiveInstance?.getTelemetry() || EMPTY), 45);
+    const timer = window.setInterval(() => {
+      setTelemetry(Ditune2Node.lastActiveInstance?.getTelemetry() || EMPTY);
+    }, 45);
     return () => window.clearInterval(timer);
   }, []);
 
   const cents = clamp(telemetry.centsDeviation, -50, 50);
   const correction = clamp(telemetry.correctionCents, -175, 175);
   const note = telemetry.isTracking ? midiToName(telemetry.targetMidi) : '—';
+  const inputDb = gainToDb(telemetry.inputRms);
   const backendLabel = telemetry.backend === 'wasm'
     ? 'C++ WASM • JUCE shared core'
     : telemetry.backend === 'passthrough'
@@ -71,7 +86,7 @@ export function Ditune2Modal({ slot, slotIndex, onUpdateParams, onClose, zIndex,
       <div className="p-4">
         <div className="grid grid-cols-[300px_1fr] gap-4">
           <div className="rounded-2xl border border-[#422c4b] bg-gradient-to-br from-[#201724] to-[#111116] p-4">
-            <div className="h-[250px] rounded-xl border border-[#302438] bg-[#0f0f14] flex flex-col items-center justify-center relative overflow-hidden">
+            <div className="min-h-[278px] rounded-xl border border-[#302438] bg-[#0f0f14] flex flex-col items-center justify-center relative overflow-hidden py-4">
               <div className="absolute w-44 h-44 rounded-full bg-fuchsia-500/10 blur-3xl" />
               <div className="relative text-[8px] font-black tracking-[0.24em] text-[#777381]">TARGET NOTE</div>
               <div className="relative mt-1 text-6xl font-black text-[#f5e9ff] drop-shadow-[0_0_16px_rgba(232,121,249,0.38)]">{note}</div>
@@ -79,24 +94,42 @@ export function Ditune2Modal({ slot, slotIndex, onUpdateParams, onClose, zIndex,
                 {telemetry.isTracking ? `${cents >= 0 ? '+' : ''}${cents.toFixed(1)} cents input` : 'WAITING FOR VOICE'}
               </div>
 
-              <div className="relative mt-5 w-[220px]">
+              <div className="relative mt-4 w-[220px]">
                 <div className="h-2 rounded-full bg-[#26232c] relative">
                   <div className="absolute left-1/2 top-[-4px] h-4 w-px bg-[#e879f9]" />
-                  <div className="absolute top-[-3px] h-3.5 w-3.5 rounded-full bg-[#e879f9] shadow-[0_0_10px_rgba(232,121,249,0.8)] transition-[left] duration-75" style={{ left: `calc(${50 + cents}% - 7px)` }} />
+                  <div
+                    className="absolute top-[-3px] h-3.5 w-3.5 rounded-full bg-[#e879f9] shadow-[0_0_10px_rgba(232,121,249,0.8)] transition-[left] duration-75"
+                    style={{ left: `calc(${50 + cents}% - 7px)` }}
+                  />
                 </div>
                 <div className="flex justify-between mt-1 text-[7px] font-mono text-[#5f5a66]"><span>-50</span><span>0</span><span>+50</span></div>
               </div>
 
-              <div className="relative grid grid-cols-2 gap-2 mt-4 w-[250px] text-center">
-                <div className="rounded-md border border-[#292531] bg-[#17151c] py-1.5"><div className="text-[7px] text-[#6d6873]">INPUT</div><div className="text-[10px] font-mono text-[#ddd]">{telemetry.detectedHz > 0 ? `${telemetry.detectedHz.toFixed(1)} Hz` : '—'}</div></div>
+              <div className="relative grid grid-cols-2 gap-2 mt-3 w-[250px] text-center">
+                <div className="rounded-md border border-[#292531] bg-[#17151c] py-1.5"><div className="text-[7px] text-[#6d6873]">INPUT PITCH</div><div className="text-[10px] font-mono text-[#ddd]">{telemetry.detectedHz > 0 ? `${telemetry.detectedHz.toFixed(1)} Hz` : '—'}</div></div>
                 <div className="rounded-md border border-[#292531] bg-[#17151c] py-1.5"><div className="text-[7px] text-[#6d6873]">TARGET</div><div className="text-[10px] font-mono text-[#ddd]">{telemetry.targetHz > 0 ? `${telemetry.targetHz.toFixed(1)} Hz` : '—'}</div></div>
                 <div className="rounded-md border border-[#292531] bg-[#17151c] py-1.5"><div className="text-[7px] text-[#6d6873]">CORRECTION</div><div className="text-[10px] font-mono text-[#f0abfc]">{`${correction >= 0 ? '+' : ''}${correction.toFixed(1)} ct`}</div></div>
                 <div className="rounded-md border border-[#292531] bg-[#17151c] py-1.5"><div className="text-[7px] text-[#6d6873]">CONFIDENCE</div><div className="text-[10px] font-mono text-[#ddd]">{`${Math.round(telemetry.confidence * 100)}%`}</div></div>
               </div>
+
+              <div className="relative mt-2 grid grid-cols-3 gap-1.5 w-[250px] text-center">
+                <div className="rounded border border-[#25222c] bg-[#141319] px-1 py-1">
+                  <div className="text-[6px] font-black tracking-wide text-[#625d69]">AUDIO IN</div>
+                  <div className="text-[8px] font-mono text-[#b7b1bd]">{telemetry.inputRms > 1e-8 ? `${inputDb.toFixed(1)} dB` : '—'}</div>
+                </div>
+                <div className="rounded border border-[#25222c] bg-[#141319] px-1 py-1">
+                  <div className="text-[6px] font-black tracking-wide text-[#625d69]">DETECTOR</div>
+                  <div className="text-[8px] font-mono" style={{ color: telemetry.detectorQuality >= 0.5 ? '#d8b4fe' : '#8c8492' }}>{`${Math.round(telemetry.detectorQuality * 100)}%`}</div>
+                </div>
+                <div className="rounded border border-[#25222c] bg-[#141319] px-1 py-1">
+                  <div className="text-[6px] font-black tracking-wide text-[#625d69]">ANALYSIS</div>
+                  <div className="text-[8px] font-mono" style={{ color: telemetry.analysisReady ? '#c4b5fd' : '#8c8492' }}>{telemetry.analysisReady ? 'READY' : 'WARMING'}</div>
+                </div>
+              </div>
             </div>
             <div className="mt-2 flex items-center justify-between text-[8px] font-bold">
               <span className={telemetry.backend === 'wasm' ? 'text-[#c4b5fd]' : telemetry.backend === 'passthrough' ? 'text-amber-300' : 'text-[#777]'}>{backendLabel}</span>
-              <span className="text-[#625d69]">v0.1 pitch-sync</span>
+              <span className="text-[#625d69]">v0.2 vocal lock</span>
             </div>
           </div>
 
@@ -112,7 +145,7 @@ export function Ditune2Modal({ slot, slotIndex, onUpdateParams, onClose, zIndex,
               <PluginModeSwitch label="Processing mode" value={modeHQ} options={[{ value: 0, label: 'Real time' }, { value: 1, label: 'HQ' }]} onChange={(v) => update('modeHQ', v)} className="flex-1" />
             </div>
             <div className="mt-3 rounded-lg border border-[#30283a] bg-[#121116] px-3 py-2 text-[8px] leading-relaxed text-[#81798a]">
-              <span className="font-black text-[#d8b4fe]">A/B engine:</span> Ditune2 does not reuse Ditune v1's shifter. Pitch detection, target tracking and pitch-synchronous resynthesis run inside the C++ core.
+              <span className="font-black text-[#d8b4fe]">Detector v0.2:</span> averaged 4:1 analysis plus a 105 ms voiced hold keeps correction alive across normal consonant and breath gaps instead of dropping immediately to unity.
             </div>
           </div>
         </div>
