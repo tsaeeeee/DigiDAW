@@ -261,7 +261,7 @@ footer:has(.daw-effect-rack) canvas[width="12"][height="210"] {
 }
 
 /* Fader rail + cap. The invisible input above it keeps all existing behavior. */
-footer:has(.daw-effect-rack) input[orient="vertical"] ~ div:first-of-type {
+footer:has(.daw-effect-rack) input[orient="vertical"] + div {
   width: 31px !important;
   height: 12px !important;
   border-radius: 4px !important;
@@ -275,7 +275,7 @@ footer:has(.daw-effect-rack) input[orient="vertical"] ~ div:first-of-type {
     0 0 9px rgba(255,217,0,0.10) !important;
 }
 
-footer:has(.daw-effect-rack) input[orient="vertical"] ~ div:first-of-type > div {
+footer:has(.daw-effect-rack) input[orient="vertical"] + div > div {
   height: 1px !important;
   background: rgba(29,23,0,0.72) !important;
   box-shadow: 0 1px rgba(255,255,255,0.28);
