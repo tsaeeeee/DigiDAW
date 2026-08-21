@@ -51,7 +51,7 @@ interface OpenPluginWindow {
   zIndex: number;
 }
 
-export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }: Props) {
+export function EffectRack({ effects = [], onUpdateEffect, isMaster = false, analyser, isPlaying }: Props) {
   const [picker, setPicker] = useState<number | null>(null);
   const [openWindows, setOpenWindows] = useState<OpenPluginWindow[]>([]);
   const lastFocusedSlot = useRef<number | null>(null);
@@ -128,7 +128,7 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
   const themeClass = (type: EffectType) => `plugin-title-patch plugin-themed plugin-theme-${type.toLowerCase()}`;
   const validWindows = openWindows.filter((window) => slots[window.index]?.type === window.type);
 
-  return <div className="w-full flex flex-col gap-1 my-1 relative">
+  return <div className={cn('daw-effect-rack w-full flex flex-col gap-1 my-1 relative', isMaster && 'daw-effect-rack-master')}>
     <div className="w-full bg-[#111113] border border-black rounded p-0.5 flex flex-col gap-0.5 shadow-inner max-h-[83px] overflow-y-auto custom-scrollbar">
       {slots.map((slot, i) => {
         const meta = slot.type ? DEDICATED_EFFECTS.find(x => x.type === slot.type) : null;
@@ -139,6 +139,8 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
         </div>;
       })}
     </div>
+
+    {isMaster && <MasterMixerAnalysis analyser={analyser} isPlaying={!!isPlaying} />}
 
     {picker !== null && <div ref={pickerRef} className="absolute top-[86px] left-0 z-[420] w-44 rounded-md border border-[#34343d] bg-[#17171d] p-1.5 shadow-2xl">
       <div className="mb-1 flex items-center justify-between border-b border-[#292932] px-1 pb-1">
@@ -169,4 +171,126 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
       </div>;
     })}
   </div>;
+}
+
+function MasterMixerAnalysis({ analyser, isPlaying }: { analyser?: any; isPlaying: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let frameId = 0;
+    const dbToLevel = (db: number) => {
+      if (!Number.isFinite(db)) return 0;
+      return Math.max(0, Math.min(1, (db + 60) / 60));
+    };
+
+    const render = () => {
+      const width = canvas.width;
+      const height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
+
+      ctx.fillStyle = '#0b0c0e';
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.055)';
+      ctx.lineWidth = 1;
+      for (let y = 16; y < height - 28; y += 18) {
+        ctx.beginPath();
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(width, y + 0.5);
+        ctx.stroke();
+      }
+      for (let x = 18; x < width; x += 22) {
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, 0);
+        ctx.lineTo(x + 0.5, height - 28);
+        ctx.stroke();
+      }
+
+      let spectrum: ArrayLike<number> | null = null;
+      try {
+        const raw = analyser?.fft?.getValue?.();
+        if (raw instanceof Float32Array) spectrum = raw;
+        else if (Array.isArray(raw) && raw.length && typeof raw[0] === 'number') spectrum = raw as number[];
+        else if (Array.isArray(raw) && raw[0] instanceof Float32Array) spectrum = raw[0];
+      } catch {
+        spectrum = null;
+      }
+
+      const spectrumHeight = height - 36;
+      const bars = 22;
+      const gap = 2;
+      const barWidth = (width - gap * (bars - 1)) / bars;
+      for (let i = 0; i < bars; i++) {
+        let level = 0;
+        if (spectrum && spectrum.length) {
+          const start = Math.floor(Math.pow(i / bars, 1.8) * spectrum.length);
+          const end = Math.max(start + 1, Math.floor(Math.pow((i + 1) / bars, 1.8) * spectrum.length));
+          let peak = -120;
+          for (let b = start; b < Math.min(end, spectrum.length); b++) {
+            const value = Number(spectrum[b]);
+            if (Number.isFinite(value)) peak = Math.max(peak, value);
+          }
+          level = Math.max(0, Math.min(1, (peak + 78) / 72));
+        }
+        const barHeight = Math.max(1, level * spectrumHeight);
+        const x = i * (barWidth + gap);
+        const y = spectrumHeight - barHeight;
+        const alpha = 0.28 + level * 0.72;
+        ctx.fillStyle = `rgba(255, 217, 0, ${alpha})`;
+        ctx.fillRect(x, y, Math.max(1, barWidth), barHeight);
+      }
+
+      let dbL = -60;
+      let dbR = -60;
+      try {
+        const meter = analyser?.meter?.getValue?.();
+        if (Array.isArray(meter) || meter instanceof Float32Array) {
+          dbL = Number.isFinite(Number(meter[0])) ? Number(meter[0]) : -60;
+          dbR = Number.isFinite(Number(meter[1])) ? Number(meter[1]) : dbL;
+        } else if (Number.isFinite(Number(meter))) {
+          dbL = Number(meter);
+          dbR = Number(meter);
+        }
+      } catch {
+        dbL = -60;
+        dbR = -60;
+      }
+
+      const l = dbToLevel(dbL);
+      const r = dbToLevel(dbR);
+      const meterTop = height - 23;
+      const meterWidth = width - 18;
+      ctx.fillStyle = '#17191d';
+      ctx.fillRect(9, meterTop, meterWidth, 5);
+      ctx.fillRect(9, meterTop + 9, meterWidth, 5);
+      ctx.fillStyle = '#ffd900';
+      ctx.fillRect(9, meterTop, meterWidth * l, 5);
+      ctx.fillRect(9, meterTop + 9, meterWidth * r, 5);
+      ctx.fillStyle = '#777b83';
+      ctx.font = '7px Kumbh Sans, sans-serif';
+      ctx.fillText('L', 1, meterTop + 5);
+      ctx.fillText('R', 1, meterTop + 14);
+
+      frameId = requestAnimationFrame(render);
+    };
+
+    render();
+    return () => cancelAnimationFrame(frameId);
+  }, [analyser]);
+
+  return (
+    <div className="daw-master-analysis pointer-events-none" aria-hidden="true">
+      <div className="daw-master-analysis-head">
+        <span>Master analysis</span>
+        <span className={cn('daw-master-analysis-dot', isPlaying && 'is-live')} />
+      </div>
+      <canvas ref={canvasRef} width={112} height={174} className="daw-master-analysis-canvas" />
+      <div className="daw-master-analysis-footer"><span>40 Hz</span><span>20 kHz</span></div>
+    </div>
+  );
 }
