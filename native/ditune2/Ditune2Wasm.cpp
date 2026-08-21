@@ -24,6 +24,10 @@ __attribute__((visibility("default"))) float ditune2_cents() { return gEngine.ce
 __attribute__((visibility("default"))) float ditune2_correction_cents() { return gEngine.correctionCents(); }
 __attribute__((visibility("default"))) float ditune2_target_midi() { return gEngine.targetMidi(); }
 __attribute__((visibility("default"))) float ditune2_tracking() { return gEngine.isTracking(); }
+__attribute__((visibility("default"))) float ditune2_input_rms() { return gEngine.inputRms(); }
+__attribute__((visibility("default"))) float ditune2_detector_quality() { return gEngine.detectorQuality(); }
+__attribute__((visibility("default"))) float ditune2_analysis_ready() { return gEngine.analysisReady(); }
+__attribute__((visibility("default"))) float ditune2_voiced_hold_ms() { return gEngine.voicedHoldMs(); }
 }
 
 extern "C" void* memset(void* dest, int value, unsigned long n) {
