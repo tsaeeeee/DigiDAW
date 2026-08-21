@@ -1,0 +1,1 @@
+The browser does not host a JUCE plug-in format. Ditune2 uses a shared C++ DSP engine: WebAssembly + AudioWorklet in DigiDAW and a JUCE AudioProcessor wrapper for native VST3/AU/Standalone. This preserves one algorithm while keeping the existing Web Audio backends isolated.
