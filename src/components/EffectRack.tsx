@@ -10,10 +10,13 @@ import { DelayModal } from './DelayModal';
 import { SaturatorModal } from './SaturatorModal';
 import { PitchyModal } from './PitchyModal';
 import { DeEsserModal } from './DeEsserModal';
+import { Ditune2Modal } from './Ditune2Modal';
+import '../dsp/ditune2/registerDitune2';
 
 const SLOTS = 7;
 let globalPluginZ = 310;
 const nextPluginZ = () => ++globalPluginZ;
+const DITUNE2_TYPE = 'Ditune2' as EffectType;
 
 export const DEDICATED_EFFECTS: { type: EffectType; name: string; shortCode: string; color: string; desc: string }[] = [
   { type: 'Compressor', name: 'Dikompres', shortCode: 'COMP', color: '#fb923c', desc: 'Dynamic range control' },
@@ -24,6 +27,7 @@ export const DEDICATED_EFFECTS: { type: EffectType; name: string; shortCode: str
   { type: 'Limiter', name: 'Dilimit', shortCode: 'LIM', color: '#facc15', desc: 'Peak ceiling protection' },
   { type: 'Saturator', name: 'Disaturasi', shortCode: 'SAT', color: '#f97316', desc: 'Harmonic saturation' },
   { type: 'DeEsser', name: 'Disser', shortCode: 'DESS', color: '#22d3ee', desc: 'Dynamic sibilance control' },
+  { type: DITUNE2_TYPE, name: 'Ditune2', shortCode: 'TUNE2', color: '#e879f9', desc: 'Experimental C++ / JUCE autotune' },
 ];
 
 const SECONDARY_ACCENTS: Record<EffectType, string> = {
@@ -99,11 +103,11 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
     return {
       '--plugin-title': JSON.stringify(meta?.name || type),
       '--plugin-accent': meta?.color || '#f472b6',
-      '--plugin-accent-2': SECONDARY_ACCENTS[type],
+      '--plugin-accent-2': type === DITUNE2_TYPE ? '#a78bfa' : SECONDARY_ACCENTS[type],
     } as React.CSSProperties;
   };
 
-  const themeClass = (type: EffectType) => `plugin-title-patch plugin-themed plugin-theme-${type.toLowerCase()}`;
+  const themeClass = (type: EffectType) => `plugin-title-patch plugin-themed plugin-theme-${String(type).toLowerCase()}`;
   const validWindows = openWindows.filter((window) => slots[window.index]?.type === window.type);
 
   return <div className="w-full flex flex-col gap-1 my-1 relative">
@@ -119,7 +123,7 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
     </div>
 
     {picker !== null && <div className="absolute top-[86px] left-0 z-[420] w-44 rounded-md border border-[#34343d] bg-[#17171d] p-1.5 shadow-2xl">
-      {DEDICATED_EFFECTS.map(meta => <button key={meta.type} onClick={() => { onUpdateEffect(picker, meta.type, false); openPluginWindow(picker, meta.type); setPicker(null); }} className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-[#282832] text-left"><span className="min-w-[38px] px-1 py-0.5 rounded-[2px] text-center text-[7px] font-black text-black" style={{ backgroundColor: meta.color }}>{meta.shortCode}</span><span className="text-[9px] text-white font-bold truncate">{meta.name}</span></button>)}
+      {DEDICATED_EFFECTS.map(meta => <button key={String(meta.type)} onClick={() => { onUpdateEffect(picker, meta.type, false); openPluginWindow(picker, meta.type); setPicker(null); }} className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-[#282832] text-left"><span className="min-w-[38px] px-1 py-0.5 rounded-[2px] text-center text-[7px] font-black text-black" style={{ backgroundColor: meta.color }}>{meta.shortCode}</span><span className="text-[9px] text-white font-bold truncate">{meta.name}</span></button>)}
     </div>}
 
     {validWindows.map((window) => {
@@ -133,6 +137,7 @@ export function EffectRack({ effects = [], onUpdateEffect, analyser, isPlaying }
         {window.type === 'Limiter' && <BrickwallLimiterModal {...props} />}
         {window.type === 'Saturator' && <SaturatorModal {...props} />}
         {window.type === 'DeEsser' && <DeEsserModal {...props} />}
+        {window.type === DITUNE2_TYPE && <Ditune2Modal {...props} />}
       </div>;
     })}
   </div>;
