@@ -278,6 +278,17 @@ main > div > div > div:first-child > div:last-child {
   border-bottom-color: rgba(255, 217, 0, 0.095) !important;
 }
 
+/* Empty lanes keep the workspace tint but stay ~75% transparent so the
+   existing bar/beat grid underneath remains visible. Clip geometry and grid
+   math stay untouched; :has() only distinguishes visual empty/non-empty lanes. */
+#timeline-column > [class*="h-[80px]"]:not(:has([class*="cursor-grab"])) {
+  background: rgba(17, 17, 13, 0.25) !important;
+}
+
+#timeline-column > [class*="h-[80px]"][class~="bg-white/[0.02]"]:not(:has([class*="cursor-grab"])) {
+  background: rgba(23, 23, 16, 0.35) !important;
+}
+
 /* Keep clip geometry and waveform presentation untouched; only remove generic
    hover bevels from the shell so clips sit naturally on the new timeline. */
 #timeline-column [class*="cursor-grab"] {
