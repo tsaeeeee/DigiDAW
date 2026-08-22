@@ -41,6 +41,7 @@ function wireWorkspaceBrandNavigation() {
   brandGroup.setAttribute('tabindex', '0');
   brandGroup.setAttribute('aria-label', 'Back to DigiDAW landing page');
   brandGroup.setAttribute('title', 'Back to landing page');
+  brandGroup.style.cursor = 'pointer';
 
   const openLanding = () => {
     window.dispatchEvent(new Event(OPEN_LANDING_EVENT));
