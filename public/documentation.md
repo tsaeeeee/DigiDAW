@@ -271,8 +271,6 @@ The master channel includes volume, pan, an FX rack, and its own output/render p
 
 It is intended for final processing such as master EQ, bus compression, saturation, limiting, or any combination required by the project.
 
----
-
 ## 6. Signal Flow
 
 DigiDAW's signal flow is designed to remain serial and predictable.
@@ -334,8 +332,6 @@ Disaturasi -> Dikompres -> Diequ
 ```
 
 because each plugin receives the output produced by the plugin before it.
-
----
 
 ## 7. FX Rack
 
@@ -725,7 +721,7 @@ Current limitations include:
 This documentation will be updated as DigiDAW evolves.
 
 
-
+---
 # DigiDAW Philosophy
 
 Crescentials Record started DigiDAW with the belief that learning and making music should not begin with searching for pirated software.
