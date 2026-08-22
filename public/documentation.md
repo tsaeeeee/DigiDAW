@@ -1,39 +1,34 @@
 # DigiDAW Documentation
 
-**DigiDAW** adalah Digital Audio Workstation berbasis browser yang dirancang untuk workflow mixing dan mastering yang cepat, ringan, mudah diakses, gratis, dan dapat digunakan tanpa bergantung pada software bajakan.
+**DigiDAW** is a browser-based Digital Audio Workstation designed for fast, lightweight, accessible, free, and legal mixing and mastering workflows without relying on pirated software.
 
-DigiDAW dipelopori oleh **Crescentials Record** dengan satu tujuan sederhana: membuka akses ke workflow audio yang lebih serius untuk producer pemula, musisi independen, engineer yang sedang belajar, sampai pengguna profesional yang membutuhkan DAW cepat untuk bekerja langsung dari browser.
+DigiDAW was initiated by **Crescentials Record** with one simple goal: to make more serious audio workflows accessible to beginner producers, independent musicians, engineers who are still learning, and professional users who need a fast DAW that can run directly in a browser.
 
-> Fokus DigiDAW bukan menjadi music player dengan beberapa efek. Fokusnya adalah menghadirkan workflow DAW yang nyata: import stems, edit timeline, mixing per track, insert effect serial, master bus, metering, dan render audio.
+## 1. Why DigiDAW Was Created
 
----
+Not every producer or musician has access to a commercial DAW. Some are just beginning to learn, some work on shared computers, some only need a lightweight workstation for quick mixing tasks, and others simply do not want to rely on cracked or pirated software.
 
-## 1. Kenapa DigiDAW Dibuat
+DigiDAW was created as a healthier alternative for those situations.
 
-Tidak semua producer atau musisi memiliki akses ke DAW komersial. Ada yang baru mulai belajar, ada yang menggunakan komputer bersama, ada yang hanya membutuhkan workstation ringan untuk menyelesaikan mixing cepat, dan ada juga yang tidak ingin menggunakan software hasil crack atau pembajakan.
+Its core principles are:
 
-DigiDAW dibuat sebagai alternatif yang lebih sehat untuk kondisi tersebut.
+- **Free to use.** Core mixing and mastering workflows are not locked behind a subscription.
+- **A legal alternative to pirated DAWs.** Users should not need to search for cracks, illegal serial numbers, or untrusted installers just to learn mixing.
+- **Browser-first.** DigiDAW runs directly in the browser and uses the Web Audio API together with client-side DSP.
+- **Lightweight by architecture.** Core audio processing runs on the user's own device instead of sending the entire session to a server for processing.
+- **Built around real workflows.** The timeline, tracks, clips, mixer, insert FX, master bus, metering, undo/redo, and rendering are designed as one integrated workflow.
+- **No account required at this stage.** Users can open the launcher and start working immediately.
 
-Prinsip utamanya:
+DigiDAW is not intended to replace every desktop DAW in every possible scenario. It is being developed as a practical, accessible, and capable browser-based workstation for real mixing and mastering work.
 
-- **Gratis untuk digunakan.** Workflow dasar mixing dan mastering tidak dikunci di balik subscription.
-- **Legal sebagai alternatif penggunaan DAW bajakan.** Pengguna tidak perlu mencari crack, serial ilegal, atau installer tidak terpercaya hanya untuk belajar mixing.
-- **Browser-first.** DigiDAW berjalan langsung di browser dan memanfaatkan Web Audio API serta DSP yang berjalan di sisi pengguna.
-- **Ringan secara arsitektur.** Pemrosesan audio utama dilakukan di device pengguna, bukan dengan mengirim seluruh session ke server untuk diproses.
-- **Berorientasi workflow nyata.** Timeline, track, clip, mixer, insert FX, master bus, metering, undo/redo, dan render dibangun sebagai satu workflow.
-- **Tidak memaksa akun pada tahap saat ini.** Pengguna dapat langsung masuk ke launcher dan bekerja.
 
-DigiDAW bukan pengganti mutlak semua DAW desktop dalam setiap skenario. DigiDAW dikembangkan sebagai workstation yang praktis, mudah diakses, dan cukup serius untuk menjadi alat mixing/mastering berbasis browser yang benar-benar berguna.
+## 2. Current Session Architecture
 
----
+In the current version of DigiDAW, sessions operate entirely **client-side**.
 
-## 2. Arsitektur Session Saat Ini
+This means that when multiple users open DigiDAW at the same time, each user runs their own Web Audio instance, track state, AudioBuffers, transport, and plugin state inside their own browser.
 
-Pada versi DigiDAW saat ini, session bekerja secara **client-side**.
-
-Artinya, ketika dua pengguna membuka DigiDAW pada waktu yang sama, masing-masing menjalankan instance React, Tone.js, Web Audio, track state, AudioBuffer, transport, dan plugin state miliknya sendiri di browser masing-masing.
-
-Secara sederhana:
+In simple terms:
 
 ```text
 DigiDAW Web Server
@@ -44,89 +39,87 @@ DigiDAW Web Server
         |      +-- Mixer A
         |      +-- FX A
         |
-        +-- User B Browser
+        +-- Another User's Browser
                +-- Track B
                +-- AudioBuffer B
                +-- Mixer B
                +-- FX B
 ```
 
-User B tidak otomatis melihat timeline, stems, plugin, atau perubahan milik User A.
+User B does not automatically see User A's timeline, stems, plugins, or changes.
 
-Pada tahap saat ini DigiDAW belum memiliki:
+At this stage, DigiDAW does not yet include:
 
-- Login dan user account.
+- Login or user accounts.
 - Cloud project storage.
-- Save project ke server.
-- Shared project room.
-- Realtime collaboration.
-- Session sinkron antar device.
+- Server-side project saving.
+- Shared project rooms.
+- Real-time collaboration.
+- Cross-device session synchronization.
 
-Konsekuensinya, project juga belum persistent. Jika tab ditutup atau browser direfresh, state project yang hanya berada di memory browser dapat hilang.
+As a result, projects are not yet persistent. If the tab is closed or the browser is refreshed, project state that exists only in browser memory may be lost.
 
-Ini adalah batasan yang disengaja pada fase awal pengembangan supaya fokus utama tetap pada kualitas workflow mixing, editing, DSP, dan performa browser.
+This is an intentional limitation during the early development phase so the primary focus can remain on mixing workflow quality, editing, DSP, and browser performance.
 
----
 
-## 3. Memulai DigiDAW
 
-### 3.1 Membuka launcher
+## 3. Getting Started with DigiDAW
 
-Saat DigiDAW dibuka, halaman awal menampilkan launcher. Dari sidebar landing page tersedia dua pilihan:
+### 3.1 Opening the launcher
 
-- **DigiDAW** — membuka tampilan launcher utama.
-- **Documentation** — membuka dokumentasi yang sedang Anda baca sekarang.
+When DigiDAW is opened, the initial page displays the launcher. The landing-page sidebar provides two options:
 
-Tekan **Launch** untuk menginisialisasi audio engine dan masuk ke workspace.
+- **Launch** — opens the main DigiDAW launcher.
+- **Documentation** — opens the documentation you are reading now.
 
-### 3.2 Import audio
+Press **Launch** to initialize the audio engine and enter the workspace.
 
-Ada dua workflow import utama.
+### 3.2 Importing audio
 
-**Upload per track**
+There are two primary import workflows.
 
-Gunakan tombol upload pada track header untuk memilih satu file audio dan memasukkannya ke track tersebut.
+**Per-track upload**
+
+Use the upload button in a track header to choose a single audio file and load it into that track.
 
 **Bulk stem drag and drop**
 
-Beberapa file audio dapat dipilih sekaligus dari Finder atau File Explorer lalu ditarik langsung ke DigiDAW.
+Multiple audio files can be selected at once from Finder or File Explorer and dragged directly into DigiDAW.
 
-Bulk import dirancang untuk workflow stems:
+Bulk import is designed specifically for stem-based workflows:
 
-- Satu file audio dipetakan ke satu track.
-- Track kosong yang sudah tersedia akan dipakai terlebih dahulu.
-- Jika jumlah track tidak cukup, DigiDAW dapat menambahkan track baru sampai batas yang tersedia.
-- File audio diselaraskan ke waktu import yang sama agar stems tetap sejajar.
-- File non-audio diabaikan.
-- Batas track DigiDAW saat ini adalah **25 track**.
+- One audio file is mapped to one track.
+- Existing empty tracks are used first.
+- If more tracks are required, DigiDAW can create additional tracks up to the available limit.
+- Imported files are aligned to the same import time so stems remain synchronized.
+- Non-audio files are ignored.
+- DigiDAW currently supports a maximum of **25 tracks**.
 
-### 3.3 Atur BPM
+### 3.3 Setting the BPM
 
-BPM control tersedia di transport bar. BPM digunakan oleh timeline beat grid, bar/beat display, metronome, dan mode delay yang disinkronkan ke tempo.
+The BPM control is available in the transport bar. BPM is used by the timeline beat grid, bar/beat display, metronome, and tempo-synchronized delay modes.
 
-### 3.4 Mulai editing
+### 3.4 Starting the edit
 
-Setelah audio berada di timeline, clip dapat dipindah, dipotong, diberikan fade, dipilih, dihapus, dan diatur menggunakan snapping.
+Once audio is on the timeline, clips can be moved, cut, faded, selected, deleted, and positioned with snapping.
 
 ### 3.5 Mixing
 
-Buka mixer, atur level dan pan setiap track, kemudian gunakan FX rack pada track atau master channel sesuai kebutuhan.
+Open the mixer, set the level and pan for each track, then use the FX rack on individual tracks or the master channel as required.
 
-### 3.6 Mastering dan render
+### 3.6 Mastering and rendering
 
-Setelah balance selesai, gunakan master FX chain, limiter jika diperlukan, pantau meter, lalu gunakan fungsi render untuk menghasilkan file audio hasil akhir.
+Once the balance is complete, use the master FX chain, add a limiter when needed, monitor the meters, and use the render function to produce the final audio file.
 
----
+## 4. DigiDAW Workspace
 
-## 4. Workspace DigiDAW
-
-Workspace utama dibagi menjadi beberapa bagian besar: transport, timeline, track lane, mixer, FX rack, master channel, metering, dan render control.
+The main workspace is divided into several core areas: transport, timeline, track lanes, mixer, FX rack, master channel, metering, and render controls.
 
 ### 4.1 Transport
 
-Transport bar menyediakan kontrol utama pemutaran.
+The transport bar provides the primary playback controls.
 
-Fungsi utama:
+Main functions include:
 
 - Play / Pause.
 - Stop.
@@ -145,123 +138,106 @@ Fungsi utama:
 
 ### 4.2 Timeline
 
-Timeline adalah area utama untuk mengatur clip audio.
+The timeline is the primary area for arranging audio clips.
 
-Timeline memiliki:
+It includes:
 
 - Horizontal time ruler.
-- Beat/bar grid berdasarkan BPM.
+- BPM-based beat/bar grid.
 - Playhead.
 - Track lanes.
 - Dynamic timeline length.
-- Snap points dari clip lain, playhead, titik nol, dan beat grid.
+- Snap points from other clips, the playhead, timeline zero, and the beat grid.
 
-Timeline akan memanjang mengikuti clip terpanjang serta posisi playhead.
+The timeline automatically expands according to the longest clip and the current playhead position.
 
-### 4.3 Playhead-centered zoom
+### 4.3 Snapping
 
-Zoom DigiDAW tidak menggunakan titik awal timeline sebagai pusat zoom.
+Snapping helps clips land on relevant positions while they are being moved.
 
-Ketika zoom dilakukan, posisi playhead dijaga sebagai pivot utama sehingga workflow terasa lebih dekat dengan editing DAW desktop.
-
-Zoom control menggunakan desain roller/scroll-wheel dengan karakter berikut:
-
-- Drag ke kanan untuk zoom in.
-- Drag ke kiri untuk zoom out.
-- Mouse wheel atau trackpad dapat digunakan.
-- Nilai zoom mempunyai batas minimum dan maksimum.
-- Visual roller tetap dapat bergerak secara kontinu ketika nilai zoom sudah mencapai limit.
-- Gerakan visual menggunakan smoothing agar tidak terasa seperti slider biasa.
-
-### 4.4 Snapping
-
-Snapping membantu clip berhenti pada titik yang relevan saat dipindah.
-
-Snap points mencakup:
+Snap points include:
 
 - Timeline start.
 - Playhead.
-- Start clip lain.
-- End clip lain.
-- Beat grid berdasarkan BPM.
+- Start of another clip.
+- End of another clip.
+- BPM-based beat grid.
 
-Tahan **Shift** ketika sedang melakukan drag untuk melewati snapping sementara tanpa mematikan preference snap secara permanen.
+Hold **Shift** while dragging to temporarily bypass snapping without permanently disabling the snap preference.
 
-### 4.5 Cut tool
+### 4.4 Cut tool
 
-Tool selector di dekat zoom control mempunyai mode:
+The tool selector near the zoom control provides two modes:
 
-- **Cursor** — selection, drag, dan fade editing.
-- **Cut** — membelah clip pada posisi mouse click.
+- **Cursor** — selection, dragging, and fade editing.
+- **Cut** — splits a clip at the mouse-click position.
 
-Saat Cut aktif, klik pada clip akan melakukan split pada titik yang diklik, bukan pada playhead.
+When Cut mode is active, clicking a clip splits it exactly where the mouse is clicked rather than at the playhead.
 
-Split dilakukan pada AudioBuffer dan menghasilkan dua clip baru.
+The split is performed on the AudioBuffer and produces two new clips.
 
-Fade original dipertahankan secara logis:
+The original fades are preserved logically:
 
-- Clip bagian kiri mempertahankan fade-in.
-- Clip bagian kanan mempertahankan fade-out.
-- Titik split sendiri tidak otomatis menambahkan fade baru.
+- The left clip keeps the original fade-in.
+- The right clip keeps the original fade-out.
+- The split point itself does not automatically create a new fade.
 
-### 4.6 Fade in dan fade out
+### 4.5 Fade in and fade out
 
-Saat menggunakan Cursor mode, area tepi clip mempunyai kontrol fade.
+In Cursor mode, the edges of a clip provide fade controls.
 
-UI fade menggunakan garis visual lurus agar mudah dibaca.
+The fade UI uses straight visual ramps for clear readability.
 
-Pemrosesan audio fade dilakukan secara non-destructive terhadap buffer sumber. DigiDAW membuat playback buffer terproses untuk pemutaran dan render, sementara raw clip buffer tetap menjadi sumber utama.
+Audio fades are processed non-destructively relative to the source buffer. DigiDAW creates a processed playback buffer for playback and rendering while preserving the raw clip buffer as the primary source.
 
-### 4.7 Clip delete
+### 4.6 Clip deletion
 
-Clip yang dipilih dapat dihapus menggunakan **Delete** atau **Backspace**.
+A selected clip can be deleted with **Delete** or **Backspace**.
 
-### 4.8 Multi-select
+### 4.7 Multi-select
 
-DigiDAW mendukung multi-selection clip.
+DigiDAW supports multi-selection of clips.
 
-- Click biasa memilih satu clip.
-- **Ctrl + Click** pada Windows/Linux menambah atau melepas clip dari selection.
-- **Cmd + Click** pada macOS melakukan fungsi yang sama.
-- Selection dapat dilakukan pada clip di track yang berbeda.
-- Delete/Backspace dapat menghapus clip yang sedang berada pada multi-selection.
-- Escape keluar dari multi-selection.
+- A normal click selects one clip.
+- **Ctrl + Click** on Windows/Linux adds or removes a clip from the current selection.
+- **Cmd + Click** on macOS performs the same function.
+- Clips can be selected across different tracks.
+- Delete/Backspace can remove clips that are part of the current multi-selection.
+- Escape exits the multi-selection.
 
-Pada tahap saat ini multi-select difokuskan untuk selection dan bulk delete. Group movement sebagai satu unit belum menjadi bagian dari behavior yang dijanjikan.
+At this stage, multi-select is focused on selection and bulk deletion. Moving a selected group as one unit is not currently part of the promised behavior.
 
-### 4.9 Undo dan redo
+### 4.8 Undo and redo
 
-DigiDAW mempunyai project history untuk banyak operasi utama.
+DigiDAW includes project history for many core operations.
 
-History mencakup antara lain:
+History currently covers operations such as:
 
 - Add track.
 - Delete track.
 - Upload audio.
 - Move clip.
 - Split clip.
-- Fade change.
+- Fade changes.
 - Delete clip.
-- Volume/pan/mute/solo.
-- Track color.
+- Volume/pan/mute/solo changes.
+- Track color changes.
 - FX changes.
 - Master parameter changes.
 - BPM changes.
 - Normalize gain.
 
-History dibatasi agar memory tetap terkontrol.
+History is limited to keep memory usage under control.
 
----
+## 5. Tracks and Mixer
 
-## 5. Track dan Mixer
+### 5.1 Tracks
 
-### 5.1 Track
+Each track includes:
 
-Setiap track mempunyai:
-
-- Nama track.
+- Track name.
 - Track color.
-- Satu atau lebih audio clip.
+- One or more audio clips.
 - Volume.
 - Pan.
 - Mute.
@@ -269,13 +245,13 @@ Setiap track mempunyai:
 - Insert effect chain.
 - Metering.
 
-Nama track dapat diubah melalui track header.
+Track names can be changed from the track header.
 
 ### 5.2 Mixer channel
 
-Mixer menggunakan channel strip vertikal yang mewakili setiap track.
+The mixer uses a vertical channel strip for each track.
 
-Kontrol utama channel:
+Main channel controls include:
 
 - Stereo level meter.
 - Volume fader.
@@ -285,21 +261,21 @@ Kontrol utama channel:
 - FX rack.
 - Track label.
 
-Desain mixer menggunakan pendekatan flat matte dengan warna brand utama **#ffd900**.
+The mixer follows a flat, matte visual design using DigiDAW's primary brand color, **#ffd900**.
 
 ### 5.3 Master channel
 
-Semua track akhirnya menuju master channel.
+All tracks ultimately feed the master channel.
 
-Master channel memiliki volume, pan, FX rack, dan jalur output/render sendiri.
+The master channel includes volume, pan, an FX rack, and its own output/render path.
 
-Master digunakan untuk processing akhir seperti master EQ, bus compression, saturation, limiter, atau kombinasi lain sesuai kebutuhan.
+It is intended for final processing such as master EQ, bus compression, saturation, limiting, or any combination required by the project.
 
 ---
 
 ## 6. Signal Flow
 
-Signal flow DigiDAW dirancang tetap serial dan dapat diprediksi.
+DigiDAW's signal flow is designed to remain serial and predictable.
 
 ```text
 Audio clip / player
@@ -343,67 +319,65 @@ Track output
                   Destination / Render
 ```
 
-Insert effect diproses secara serial. Posisi effect di slot yang lebih awal berarti effect tersebut diproses lebih dahulu.
+Insert effects are processed serially. An effect placed in an earlier slot is processed before an effect placed in a later slot.
 
-Contoh:
+For example:
 
 ```text
 Diequ -> Dikompres -> Disaturasi
 ```
 
-berbeda hasilnya dengan:
+will produce a different result from:
 
 ```text
 Disaturasi -> Dikompres -> Diequ
 ```
 
-Karena masing-masing plugin menerima hasil dari plugin sebelumnya.
+because each plugin receives the output produced by the plugin before it.
 
 ---
 
 ## 7. FX Rack
 
-Setiap FX rack menyediakan sampai **7 insert slot**.
+Each FX rack provides up to **7 insert slots**.
 
-Plugin yang tersedia saat ini:
+The built-in plugins currently available are:
 
-- Dikompres.
-- Diequ.
-- Ditune.
-- Diecho.
-- Dipantul.
-- Dilimit.
-- Disaturasi.
-- Disser.
+- Dikompres (Compressor)
+- Diequ (Parametric EQ)
+- Ditune (Pitch Correction)
+- Diecho (Reverb)
+- Dipantul (Delay)
+- Dilimit (Limiter)
+- Disaturasi (Saturator)
+- Disser (De-esser)
 
-Effect dapat digunakan pada track maupun master.
+Effects can be used on both individual tracks and the master channel.
 
-Setiap slot dapat:
+Each slot can be:
 
-- Diisi plugin.
-- Dibypass.
-- Dibuka kembali untuk editing.
-- Dihapus dari chain.
+- Loaded with a plugin.
+- Bypassed.
+- Reopened for editing.
+- Removed from the chain.
 
-Plugin window dapat dipindahkan dan beberapa plugin window dapat terbuka dengan z-order yang mengikuti window terakhir yang difokuskan.
-
----
+Plugin windows can be moved, and multiple plugin windows can remain open. Their z-order follows whichever window was focused most recently.
 
 ## 8. Dikompres — Compressor
 
-**Dikompres** adalah compressor untuk mengontrol dynamic range.
+**Dikompres** is a compressor designed to control dynamic range.
 
-Parameter utama:
+Main parameters:
 
-- **Attack** — menentukan seberapa cepat compressor bereaksi setelah signal melewati threshold.
-- **Release** — menentukan seberapa cepat gain reduction kembali setelah signal turun.
-- **Ratio** — menentukan seberapa kuat signal di atas threshold dikompresi.
-- **Threshold** — level mulai bekerjanya compression.
-- **Output** — makeup/output gain setelah proses compression.
+- **Attack** — determines how quickly the compressor reacts after the signal exceeds the threshold.
+- **Release** — determines how quickly gain reduction recovers after the signal falls back down.
+- **Ratio** — determines how strongly signal above the threshold is compressed.
+- **Threshold** — sets the level at which compression begins.
+- **Output** — applies makeup/output gain after compression.
 
-Dikompres dilengkapi visual input dan gain reduction agar perubahan dynamic dapat dilihat ketika audio diputar.
+Dikompres includes input and gain-reduction visualization so dynamic changes can be monitored during playback.
 
-Preset yang tersedia:
+Presets:
 
 - Default.
 - Punchy Drums.
@@ -412,21 +386,12 @@ Preset yang tersedia:
 - Hard Slam.
 - Master Bus.
 
-Contoh workflow vocal:
-
-1. Mulai dari Smooth Vocal.
-2. Turunkan threshold sampai gain reduction mulai bekerja pada bagian paling keras.
-3. Sesuaikan attack agar transient dan articulation tidak hilang berlebihan.
-4. Sesuaikan release agar compressor kembali natural di antara frase.
-5. Gunakan output untuk menyamakan perceived level ketika membandingkan bypass dan active.
-
----
 
 ## 9. Diequ — Five-band Equalizer
 
-**Diequ** adalah equalizer lima band.
+**Diequ** is a five-band equalizer.
 
-Setiap band dapat menggunakan bentuk filter:
+Each band can use one of the following filter shapes:
 
 - Bell / Peaking.
 - High Pass.
@@ -434,7 +399,7 @@ Setiap band dapat menggunakan bentuk filter:
 - Low Shelf.
 - High Shelf.
 
-Parameter band:
+Band parameters:
 
 - Frequency.
 - Gain.
@@ -444,47 +409,37 @@ Parameter band:
 
 Default five-band layout:
 
-- Band 1: High Pass sekitar 40 Hz.
-- Band 2: Bell sekitar 250 Hz.
-- Band 3: Bell sekitar 1 kHz.
-- Band 4: Bell sekitar 4 kHz.
-- Band 5: Low Pass sekitar 15 kHz.
+- Band 1: High Pass around 40 Hz.
+- Band 2: Bell around 250 Hz.
+- Band 3: Bell around 1 kHz.
+- Band 4: Bell around 4 kHz.
+- Band 5: Low Pass around 15 kHz.
 
-Diequ mempunyai visual frequency response dan kontrol band untuk membentuk tonal balance.
+Diequ provides a visual frequency response and band controls for shaping tonal balance.
 
-Preset saat ini:
+Presets:
 
 - Flat Default.
 - Vocal Clarity.
 - Bass & Sub Control.
 - Smile Curve.
 
-Contoh workflow vocal:
-
-1. Gunakan high-pass untuk membersihkan low rumble jika diperlukan.
-2. Evaluasi area low-mid jika vocal terlalu muddy.
-3. Gunakan bell di area presence untuk membantu articulation.
-4. Gunakan high shelf secara hati-hati untuk air/brightness.
-5. Band yang tidak diperlukan dapat dibypass.
-
----
-
 ## 10. Ditune — Vocal Pitch Correction
 
-**Ditune** adalah processor pitch correction chromatic yang dikembangkan untuk vocal.
+**Ditune** is a chromatic pitch-correction processor developed for vocals.
 
-Ditune saat ini masih dianggap **beta / experimental**. Fitur bekerja sebagai pitch-correction processor, tetapi karakter resynthesis masih menjadi area pengembangan aktif dan belum dimaksudkan untuk diklaim setara dengan produk pitch correction komersial kelas industri.
+Ditune is currently considered **beta / experimental**. It functions as a pitch-correction processor, but the character and quality of its resynthesis remain areas of active development. It is not intended to be presented as equivalent to industry-standard commercial pitch-correction products.
 
-Parameter utama:
+Main parameters:
 
-- **Reference Hz** — tuning reference, default 440 Hz.
-- **Speed** — kecepatan correction menuju target pitch.
-- **Humanize** — mempertahankan variasi vocal agar hasil tidak terlalu kaku.
-- **Transition** — mengatur transisi correction antar target pitch.
-- **Color** — parameter karakter output/resynthesis.
-- **HQ Mode** — mode processing tambahan untuk preset tertentu.
+- **Reference Hz** — tuning reference, 440 Hz by default.
+- **Speed** — controls how quickly correction moves toward the target pitch.
+- **Humanize** — preserves vocal variation so correction does not become unnecessarily rigid.
+- **Transition** — controls correction transitions between target pitches.
+- **Color** — adjusts the character of the output/resynthesis.
+- **HQ Mode** — enables an additional processing mode used by selected presets.
 
-Telemetry Ditune dapat menampilkan:
+Ditune telemetry can display:
 
 - Detected note.
 - Cents deviation.
@@ -492,8 +447,7 @@ Telemetry Ditune dapat menampilkan:
 - Target frequency.
 - Tracking confidence.
 
-Preset saat ini:
-
+Presets:
 - Default Auto-Tune.
 - Hard Tune Snap.
 - Modern Lead.
@@ -501,67 +455,61 @@ Preset saat ini:
 - Smooth R&B.
 - Bright Lead.
 
-Gunakan Ditune dengan expectation yang realistis: semakin agresif speed dan semakin rendah humanize, semakin jelas karakter hard-tune yang dihasilkan.
-
----
+Use Ditune with realistic expectations: the more aggressive the Speed setting and the lower the Humanize value, the more obvious the hard-tune character will become.
 
 ## 11. Diecho — Reverb
 
-**Diecho** adalah reverb untuk membangun ruang, depth, ambience, plate-like space, chamber, dan hall.
+**Diecho** is a reverb processor for creating space, depth, ambience, plate-like environments, chambers, and halls.
 
-Parameter utama:
+Main parameters:
 
-- **H-Cut** — membatasi high frequency pada jalur reverb.
-- **L-Cut** — membersihkan low frequency pada reverb.
-- **Predelay** — jarak waktu sebelum reverb muncul setelah dry signal.
-- **Size** — persepsi ukuran ruang.
-- **Mod** — modulation amount.
-- **Diff** — diffusion/density karakter pantulan.
-- **Speed** — modulation speed.
-- **Bass** — karakter low-frequency decay.
-- **Decay** — panjang tail reverb.
-- **Cross** — crossover untuk pembentukan decay.
-- **Damp** — high-frequency damping.
-- **Dry** — level dry signal.
-- **ER** — early reflection level.
-- **Wet** — level reverb.
-- **Sep** — stereo separation/width behavior.
-- **Mode** — mode processing yang digunakan oleh engine reverb.
+- **H-Cut** — limits high-frequency content in the reverb path.
+- **L-Cut** — removes low-frequency content from the reverb.
+- **Predelay** — sets the delay before reverb begins after the dry signal.
+- **Size** — controls the perceived size of the space.
+- **Mod** — controls modulation amount.
+- **Diff** — controls diffusion/density of the reflection character.
+- **Speed** — controls modulation speed.
+- **Bass** — shapes low-frequency decay behavior.
+- **Decay** — sets the length of the reverb tail.
+- **Cross** — sets the crossover used to shape decay behavior.
+- **Damp** — controls high-frequency damping.
+- **Dry** — sets the dry-signal level.
+- **ER** — sets the early-reflection level.
+- **Wet** — sets the reverb level.
+- **Sep** — controls stereo separation/width behavior.
+- **Mode** — selects the processing mode used by the reverb engine.
 
-Diecho juga menyediakan telemetry input, reverb, dan output dari DSP aktif.
+Diecho also provides input, reverb, and output telemetry from the active DSP.
 
-Preset:
-
+Presets:
 - Studio Plate.
 - Warm Chamber.
 - Wide Hall.
 - Dark Vocal Space.
 - Endless Side Space.
 
-Untuk vocal, predelay sering berguna untuk menjaga dry articulation tetap di depan sebelum tail reverb muncul.
-
----
 
 ## 12. Dipantul — Stereo Delay
 
-**Dipantul** adalah stereo delay dengan mode time bebas dan tempo-sync.
+**Dipantul** is a stereo delay with both free-time and tempo-synchronized modes.
 
-Parameter utama:
+Main parameters:
 
-- **Time** — delay time ketika sync dimatikan.
-- **Sync Mode** — memilih free time atau tempo-synced delay.
-- **Sync Division** — 1/32, 1/16, 1/8, 1/4, 1/2, dan 1/1.
-- **Feedback** — jumlah signal delay yang dikembalikan ke delay line.
-- **Wet Mix** — level delay effect.
-- **Output Gain** — output level plugin.
-- **Mod** — modulation/wobble pada delay.
-- **Tone** — karakter dark sampai bright.
-- **Low Cut** — membersihkan low-frequency repeat.
-- **L/R Offset** — perbedaan timing/character antar stereo side.
-- **Drive** — menambahkan karakter drive pada repeat.
-- **Ping Pong** — memantulkan repeat antar channel kiri dan kanan.
+- **Time** — sets delay time when synchronization is disabled.
+- **Sync Mode** — switches between free time and tempo-synchronized delay.
+- **Sync Division** — 1/32, 1/16, 1/8, 1/4, 1/2, and 1/1.
+- **Feedback** — controls how much delayed signal is fed back into the delay line.
+- **Wet Mix** — sets the delay-effect level.
+- **Output Gain** — sets plugin output level.
+- **Mod** — adds modulation/wobble to the delay.
+- **Tone** — shapes the repeat character from dark to bright.
+- **Low Cut** — removes low-frequency content from repeats.
+- **L/R Offset** — creates timing or character differences between the left and right sides.
+- **Drive** — adds drive character to the repeats.
+- **Ping Pong** — alternates repeats between the left and right channels.
 
-Preset:
+Presets:
 
 - Slapback 120ms.
 - Vocal Echo 240ms.
@@ -569,25 +517,23 @@ Preset:
 - Warm Tape Echo.
 - Ambient Space 500ms.
 
-Mode sync menggunakan BPM project sehingga perubahan tempo ikut mempengaruhi pembagian waktu delay.
-
----
+Sync mode follows the project BPM, so tempo changes also affect synchronized delay timing.
 
 ## 13. Dilimit — Brickwall Limiter
 
-**Dilimit** adalah limiter untuk peak ceiling protection dan final level control.
+**Dilimit** is a limiter designed for peak-ceiling protection and final level control.
 
-Parameter utama:
+Main parameters:
 
-- **Ceiling** — batas maksimum output yang dituju oleh limiter.
-- **Drive** — mendorong signal ke limiter.
-- **Release** — waktu recovery dari gain reduction.
-- **Diode Saturation** — menambahkan karakter saturasi pada limiting.
-- **True Peak mode** — opsi mode peak protection di plugin.
+- **Ceiling** — sets the target maximum output level.
+- **Drive** — pushes the signal into the limiter.
+- **Release** — sets recovery time after gain reduction.
+- **Diode Saturation** — adds saturation character to the limiting process.
+- **True Peak mode** — enables an optional peak-protection mode in the plugin.
 
-Visual limiter menampilkan input, output, gain reduction, ceiling line, dan status limiting.
+The limiter visualization displays input, output, gain reduction, the ceiling line, and limiting status.
 
-Preset:
+Presets:
 
 - Mastering -0.1dB.
 - Analog Slam.
@@ -596,32 +542,24 @@ Preset:
 - Heavy Brickwall.
 - Diode Limiter.
 
-Dilimit biasanya ditempatkan di bagian akhir master chain ketika digunakan sebagai final peak protection.
-
-Contoh:
-
-```text
-Master Diequ -> Master Dikompres -> Disaturasi -> Dilimit
-```
-
----
+Dilimit is typically placed near the end of the master chain when used as final peak protection.
 
 ## 14. Disaturasi — Harmonic Saturation
 
-**Disaturasi** menambahkan harmonic coloration dan nonlinear character.
+**Disaturasi** adds harmonic coloration and nonlinear character.
 
-Parameter utama:
+Main parameters:
 
-- **Input Gain** — level signal yang masuk ke saturation stage.
-- **Saturation Drive** — jumlah nonlinear saturation.
-- **Mode** — Clean, Normal, Hot, atau Redline.
-- **Output Gain** — level setelah saturation.
+- **Input Gain** — sets the level entering the saturation stage.
+- **Saturation Drive** — controls the amount of nonlinear saturation.
+- **Mode** — Clean, Normal, Hot, or Redline.
+- **Output Gain** — sets the level after saturation.
 
-Mode yang lebih agresif menghasilkan curve saturation yang lebih keras.
+More aggressive modes produce a harder saturation curve.
 
-Plugin menampilkan transfer curve sehingga hubungan input-output dapat dilihat secara visual.
+The plugin displays a transfer curve so the input-output relationship can be monitored visually.
 
-Preset:
+Presets:
 
 - Default.
 - Subtle Console.
@@ -630,295 +568,183 @@ Preset:
 - Redline Crush.
 - Clean Boost.
 
-Saturation dapat ditempatkan sebelum atau sesudah compressor tergantung karakter yang diinginkan.
-
----
+Saturation can be placed before or after compression depending on the desired character.
 
 ## 15. Disser — Dynamic Sibilance Control
 
-**Disser** adalah de-esser untuk mengontrol sibilance tanpa membangun jalur audio paralel permanen pada mode normal.
+**Disser** is a de-esser designed to control sibilance without creating a permanent parallel audio path in normal operation.
 
-S-band digunakan sebagai detector/sidechain untuk menentukan kapan sibilance terlalu menonjol. Main audio tetap melewati satu jalur processing utama.
+The S-band is used as a detector/sidechain to determine when sibilance becomes too prominent. The main audio remains on a single primary processing path.
 
-Parameter utama:
+Main parameters:
 
-- **Low Frequency** — batas bawah detection band.
-- **High Frequency** — batas atas detection band.
-- **Threshold** — trigger level.
-- **Detection** — sensitivitas detection.
-- **Amount** — maksimum reduction yang diizinkan.
-- **Attack** — seberapa cepat reduction masuk.
-- **Release** — seberapa cepat reduction kembali.
-- **Mode** — mode behavior processing.
-- **Listen** — monitor detector band ketika diperlukan.
+- **Low Frequency** — sets the lower boundary of the detection band.
+- **High Frequency** — sets the upper boundary of the detection band.
+- **Threshold** — sets the trigger level.
+- **Detection** — controls detection sensitivity.
+- **Amount** — sets the maximum permitted reduction.
+- **Attack** — determines how quickly reduction engages.
+- **Release** — determines how quickly reduction recovers.
+- **Mode** — selects processing behavior.
+- **Listen** — monitors the detector band when required.
 
-UI telemetry menampilkan:
+UI telemetry displays:
 
-- Sibilance band activity.
+- Sibilance-band activity.
 - Detector level.
 - Raw sibilance level.
 - Relative prominence.
 - Trigger excess.
 - Gain reduction.
-- Backend processing state.
+- Processing backend state.
 
-Backend dapat menggunakan AudioWorklet path atau safe native serial fallback.
+The backend can use the AudioWorklet path or a safe native serial fallback.
 
-Disser dibangun sebagai **single-path dynamic shelf** pada jalur worklet utamanya, dengan detector yang digunakan untuk mengontrol reduction secara dinamis.
-
----
+On its primary worklet path, Disser is implemented as a **single-path dynamic shelf**, with its detector dynamically controlling the amount of reduction.
 
 ## 16. Normalize Gain
 
-DigiDAW mempunyai fungsi normalize peak.
+DigiDAW includes a peak-normalization function.
 
-Default target pada control saat ini adalah **-1.0 dB peak**.
+The current control uses a default target of **-1.0 dB peak**.
 
-Behavior normalize mengikuti selection:
+Normalization follows the current selection:
 
-- Jika clip dipilih, hanya clip tersebut yang dinormalisasi.
-- Jika track dipilih, clip pada track tersebut menjadi target.
-- Jika tidak ada selection, semua clip yang tersedia dapat menjadi target.
+- If a clip is selected, only that clip is normalized.
+- If a track is selected, clips on that track become the target.
+- If nothing is selected, all available clips can become the target.
 
-Normalize memproses AudioBuffer dan memperbarui playback buffer pada track yang terdampak.
+Normalization processes the AudioBuffer and updates the playback buffer on affected tracks.
 
-Normalize bukan pengganti mixing balance atau limiter. Ini hanya membantu menyesuaikan peak level sumber ke target tertentu.
+Normalization is not a replacement for mix balance or limiting. It simply adjusts source peak level toward a defined target.
 
----
+## 17. Metering and Monitoring
 
-## 17. Metering dan Monitoring
-
-DigiDAW mempunyai beberapa visual monitoring.
+DigiDAW provides several visual monitoring tools.
 
 ### Track meter
 
-Mixer channel menyediakan stereo level meter untuk membantu melihat level kiri dan kanan.
+Each mixer channel provides a stereo level meter to help monitor left and right channel levels.
 
 ### Mini master display
 
-Transport bar menyediakan mini display dengan mode spectrum dan peak.
+The transport bar includes a mini display with spectrum and peak modes.
 
-RTA menggunakan pembagian frequency secara logaritmik dan tidak lagi menggunakan kompensasi pink-noise tilt sebagai reference display.
+The RTA uses logarithmic frequency grouping and no longer applies pink-noise tilt compensation as a display reference.
 
 ### System performance
 
-DigiDAW mempunyai System Performance Display untuk membantu pengguna mengawasi kondisi runtime ketika jumlah track dan DSP bertambah.
+DigiDAW includes a System Performance Display to help users monitor runtime conditions as track and DSP counts increase.
 
-Karena audio processing berjalan di browser pengguna, performa sangat bergantung pada:
+Because audio processing runs in the user's browser, performance depends heavily on:
 
-- CPU device.
-- Jumlah track.
-- Jumlah plugin aktif.
-- Complexity plugin.
-- Audio buffer dan browser runtime.
+- Device CPU.
+- Number of tracks.
+- Number of active plugins.
+- Plugin complexity.
+- Audio buffers and browser runtime behavior.
 
-Jika terjadi drop-out atau glitch, kurangi jumlah processing aktif atau tutup aplikasi/tab berat lain pada device.
+If dropouts or glitches occur, reduce the amount of active processing or close other resource-intensive applications and browser tabs.
 
----
+## 18. Keyboard and Interaction Shortcuts
 
-## 18. Keyboard dan Interaction Shortcut
-
-Shortcut utama yang tersedia pada workflow sekarang:
+The primary shortcuts currently available are:
 
 - **Space** — Play / Pause.
 - **X** — Stop.
 - **C** — Toggle metronome.
 - **M** — Toggle mixer.
 - **S** — Toggle snapping.
-- **T** — Add track jika belum mencapai limit.
+- **T** — Add track if the track limit has not been reached.
 - **Ctrl/Cmd + G** — Normalize gain.
 - **Ctrl/Cmd + Z** — Undo.
 - **Ctrl/Cmd + Shift + Z** — Redo.
-- **Ctrl + Y** — Redo pada platform yang menggunakan convention tersebut.
+- **Ctrl + Y** — Redo on platforms that use this convention.
 - **Delete / Backspace** — Delete selected clip.
-- **Ctrl/Cmd + Click** — Multi-select clip.
-- **Escape** — menutup menu tertentu atau keluar dari multi-selection.
-- **Shift saat drag clip** — temporary bypass snapping.
+- **Ctrl/Cmd + Click** — Multi-select clips.
+- **Escape** — Close certain menus or exit multi-selection.
+- **Shift while dragging a clip** — Temporarily bypass snapping.
 
-Shortcut dapat berkembang pada versi berikutnya.
+Shortcut coverage may expand in future versions.
 
----
+## 19. Audio Import and Formats
 
-## 19. Import dan Format Audio
+Input files use the browser's file-handling system with `audio/*` as the accepted file category.
 
-Input file menggunakan browser file handling dengan `audio/*` sebagai accepted file category.
+Actual decodable formats still depend on the codecs supported by the user's browser.
 
-Format yang benar-benar dapat didecode tetap bergantung pada codec yang didukung browser pengguna.
+For stem-based workflows, WAV is generally a safe and common choice because it does not use lossy compression on the source material being mixed.
 
-Untuk workflow stems, file WAV biasanya menjadi pilihan yang aman dan umum karena tidak menggunakan lossy compression pada sumber mixing.
+Each imported clip stores an AudioBuffer in browser memory while the session is active.
 
-Setiap imported clip menyimpan AudioBuffer di memory browser selama session aktif.
+As a result, projects with many long files or high sample rates may consume a significant amount of memory.
 
-Karena itu, project dengan banyak file panjang dan sample rate tinggi dapat menggunakan memory yang cukup besar.
+## 20. Rendering Audio
 
----
+DigiDAW provides offline rendering for producing the final project output.
 
-## 20. Render Audio
-
-DigiDAW menyediakan offline render untuk menghasilkan hasil akhir project.
-
-Render mengikuti signal chain project, termasuk:
+Rendering follows the project signal chain, including:
 
 - Clip timing.
-- Clip fade.
+- Clip fades.
 - Track insert processing.
-- Track level dan pan.
+- Track level and pan.
 - Master insert processing.
-- Master level dan pan.
+- Master level and pan.
 
-Output render saat ini diekspor sebagai file WAV.
+The current render output is exported as a WAV file.
 
-Sebelum render, periksa:
+Before rendering, check:
 
-1. Start dan end clip.
-2. Balance track.
-3. FX bypass state.
+1. Clip start and end points.
+2. Track balance.
+3. FX bypass states.
 4. Master level.
-5. Limiter ceiling jika digunakan.
-6. Tail dari reverb atau delay.
+5. Limiter ceiling, when used.
+6. Reverb or delay tails.
 
-DigiDAW juga memperhitungkan effect tail untuk beberapa processor ketika menentukan kebutuhan render duration.
+DigiDAW also accounts for effect tails for selected processors when determining the required render duration.
 
----
+## 21. Current Limitations
 
-## 21. Rekomendasi Workflow Mixing Dasar
+DigiDAW is still under active development.
 
-Berikut contoh workflow sederhana untuk pengguna yang baru mulai.
+Current limitations include:
 
-### Step 1 — Import stems
+- A maximum of 25 tracks in the current UI/engine.
+- No persistent project save/load yet.
+- No user accounts yet.
+- No cloud project storage yet.
+- No real-time collaboration yet.
+- Refreshing the browser can remove a project that has not been rendered.
+- Multi-select does not yet make every operation a group edit automatically.
+- Bulk import and some editing-history behavior are still being refined.
+- Ditune remains beta, and resynthesis quality is still an active development area.
+- Different browsers and devices can have different performance limits and codec support.
 
-Masukkan kick, snare, bass, instrument, lead vocal, backing vocal, dan stem lain.
+This documentation will be updated as DigiDAW evolves.
 
-### Step 2 — Static balance
 
-Sebelum menggunakan plugin, atur volume track sampai lagu sudah terasa seimbang.
 
-### Step 3 — Pan
+# DigiDAW Philosophy
 
-Gunakan pan untuk memberi ruang stereo jika arrangement membutuhkan.
+Crescentials Record started DigiDAW with the belief that learning and making music should not begin with searching for pirated software.
 
-### Step 4 — Cleanup EQ
+Not everyone can immediately afford a commercial DAW, plugins, or an expensive workstation. But limited budgets should not prevent someone from learning balance, EQ, compression, spatial processing, dynamic control, and audio finishing.
 
-Gunakan Diequ untuk mengurangi frequency yang tidak dibutuhkan atau memperbaiki area yang mengganggu.
+DigiDAW aims to sit between two worlds:
 
-### Step 5 — Dynamic control
+- More accessible than a commercial desktop DAW.
+- More capable and serious than a basic web audio editor.
 
-Gunakan Dikompres ketika track mempunyai dynamic range yang perlu dikontrol.
+The long-term goal is simple:
 
-### Step 6 — Vocal processing
+> Open the browser. Import stems. Mix. Master. Render. Done.
 
-Jika diperlukan:
+No cracks.
 
-- Ditune untuk pitch correction.
-- Disser untuk sibilance.
-- Diequ untuk tone.
-- Dikompres untuk dynamic.
-- Diecho / Dipantul untuk space.
+No pirated serial numbers.
 
-### Step 7 — Character
+No unnecessary barriers.
 
-Gunakan Disaturasi secara ringan jika ingin menambah harmonic character.
-
-### Step 8 — Master bus
-
-Gunakan processing master secara konservatif. Jangan memaksa master chain memperbaiki balance yang seharusnya diselesaikan di track.
-
-### Step 9 — Limiting
-
-Gunakan Dilimit sebagai final peak protection bila diperlukan.
-
-### Step 10 — Render dan compare
-
-Render hasil, dengarkan kembali di sistem playback lain, lalu lakukan revisi jika perlu.
-
----
-
-## 22. Contoh Vocal Chain
-
-Contoh chain yang dapat digunakan sebagai starting point:
-
-```text
-Disser
-  -> Diequ
-  -> Dikompres
-  -> Ditune
-  -> Disaturasi
-  -> Diecho
-  -> Dipantul
-```
-
-Urutan di atas bukan aturan wajib.
-
-Contoh alternatif:
-
-```text
-Ditune
-  -> Disser
-  -> Diequ
-  -> Dikompres
-  -> Disaturasi
-  -> Diecho
-```
-
-Karena plugin diproses serial, urutan menghasilkan karakter yang berbeda.
-
----
-
-## 23. Contoh Master Chain
-
-Starting point sederhana:
-
-```text
-Diequ
-  -> Dikompres
-  -> Disaturasi
-  -> Dilimit
-```
-
-Tujuan master processing sebaiknya bukan sekadar membuat audio sekeras mungkin. Gunakan processing untuk tonal balance, glue, harmonic character, dan peak protection dengan tetap menjaga hasil yang nyaman didengar.
-
----
-
-## 24. Batasan Versi Saat Ini
-
-DigiDAW masih dalam pengembangan aktif.
-
-Beberapa batasan yang perlu diketahui:
-
-- Maksimum 25 track pada UI/engine saat ini.
-- Belum ada project save/load persistent.
-- Belum ada user account.
-- Belum ada cloud project storage.
-- Belum ada realtime collaboration.
-- Refresh browser dapat menghilangkan project yang belum dirender.
-- Multi-select belum berarti semua operasi otomatis menjadi group edit.
-- Bulk import dan beberapa editing history masih terus dipoles.
-- Ditune masih beta dan resynthesis quality masih menjadi area pengembangan.
-- Browser/device yang berbeda dapat memberikan batas performa dan codec support yang berbeda.
-
-Dokumentasi ini akan diperbarui mengikuti perubahan fitur.
-
----
-
-## 25. Filosofi DigiDAW
-
-Crescentials Record memulai DigiDAW dengan keyakinan bahwa belajar dan membuat musik tidak seharusnya dimulai dengan mencari software bajakan.
-
-Tidak semua orang mampu langsung membeli DAW, plugin, atau workstation mahal. Tetapi keterbatasan budget tidak seharusnya menghentikan seseorang untuk belajar balance, EQ, compression, spatial processing, dynamic control, dan finishing audio.
-
-DigiDAW mencoba mengambil posisi di antara dua dunia:
-
-- Lebih mudah diakses daripada DAW desktop komersial.
-- Lebih serius daripada web audio editor sederhana.
-
-Tujuan akhirnya sederhana:
-
-> Buka browser. Import stems. Mix. Master. Render. Selesai.
-
-Tanpa crack.
-
-Tanpa serial bajakan.
-
-Tanpa barrier yang tidak perlu.
-
-**DigiDAW — a free browser-based workstation for real mixing and mastering.**
+**DigiDAW, a free web-based linear workstation for real mixing and mastering.**
