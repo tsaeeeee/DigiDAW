@@ -1,0 +1,183 @@
+/* DigiDAW non-destructive editing controls.
+   These styles only decorate existing transport/track/clip DOM. */
+
+.digidaw-history-host {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.digidaw-history-button {
+  width: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 4px !important;
+  background: #27271f !important;
+  color: #8f8e82 !important;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+.digidaw-history-button svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.8;
+}
+
+.digidaw-history-button:hover:not(:disabled) {
+  background: #303025 !important;
+  color: #ffd900 !important;
+}
+
+.digidaw-history-button:disabled {
+  background: #1c1c17 !important;
+  color: #54544c !important;
+  opacity: 0.42 !important;
+  cursor: default !important;
+}
+
+.digidaw-history-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 2px 0 3px;
+  background: rgba(255, 217, 0, 0.1);
+}
+
+/* Per-track split control. It sits immediately left of upload/delete. */
+.digidaw-cut-track-button {
+  position: absolute !important;
+  top: 7px;
+  right: 48px;
+  z-index: 65;
+  width: 20px !important;
+  height: 20px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  color: #716f64 !important;
+  box-shadow: none !important;
+  opacity: 0.48;
+  cursor: pointer;
+}
+
+main > div > div > div:first-child > div:hover > .digidaw-cut-track-button {
+  opacity: 0.9;
+}
+
+.digidaw-cut-track-button:hover:not(:disabled) {
+  background: #2b2b22 !important;
+  color: #ffd900 !important;
+}
+
+.digidaw-cut-track-button:disabled {
+  opacity: 0.14 !important;
+  cursor: default !important;
+}
+
+.digidaw-cut-track-button svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.digidaw-cut-track-button.is-miss {
+  animation: digidaw-cut-miss 260ms ease-out;
+}
+
+@keyframes digidaw-cut-miss {
+  0%, 100% { color: #716f64; }
+  45% { color: #ff6b5e; background: rgba(255, 107, 94, 0.12); }
+}
+
+/* Fade visuals are hidden until a fade exists or the user enters the edge zone. */
+.digidaw-fade-visual-in,
+.digidaw-fade-visual-out {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 24;
+  pointer-events: none;
+  opacity: 0.82;
+}
+
+.digidaw-fade-visual-in {
+  left: 0;
+  width: var(--digidaw-fade-in, 0%);
+  background: linear-gradient(135deg, rgba(255, 217, 0, 0.23), rgba(255, 217, 0, 0.018) 70%);
+  border-top-right-radius: 100%;
+}
+
+.digidaw-fade-visual-out {
+  right: 0;
+  width: var(--digidaw-fade-out, 0%);
+  background: linear-gradient(225deg, rgba(255, 217, 0, 0.23), rgba(255, 217, 0, 0.018) 70%);
+  border-top-left-radius: 100%;
+}
+
+.digidaw-fade-handle-in,
+.digidaw-fade-handle-out {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  z-index: 48;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.digidaw-fade-handle-in {
+  left: 0;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 19C8 19 10 7 21 5' fill='none' stroke='%23ffd900' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M3 4v16' stroke='%23ffd900' stroke-width='1.5'/%3E%3C/svg%3E") 3 12, ew-resize;
+}
+
+.digidaw-fade-handle-out {
+  right: 0;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 5C14 7 16 19 21 19' fill='none' stroke='%23ffd900' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M21 4v16' stroke='%23ffd900' stroke-width='1.5'/%3E%3C/svg%3E") 21 12, ew-resize;
+}
+
+.digidaw-fade-handle-in::after,
+.digidaw-fade-handle-out::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffd900;
+  opacity: 0;
+  transition: opacity 80ms linear;
+}
+
+.digidaw-fade-handle-in::after { left: 2px; }
+.digidaw-fade-handle-out::after { right: 2px; }
+
+[class*="cursor-grab"]:hover > .digidaw-fade-handle-in::after,
+[class*="cursor-grab"]:hover > .digidaw-fade-handle-out::after,
+[class*="cursor-grab"].is-fade-editing > .digidaw-fade-handle-in::after,
+[class*="cursor-grab"].is-fade-editing > .digidaw-fade-handle-out::after {
+  opacity: 0.88;
+}
+
+[class*="cursor-grab"].is-fade-editing {
+  cursor: ew-resize !important;
+}
+
+body.digidaw-fade-dragging,
+body.digidaw-fade-dragging * {
+  user-select: none !important;
+}
