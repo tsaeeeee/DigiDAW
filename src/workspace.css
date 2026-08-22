@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Azeret+Mono:ital,wght@0,100..900;1,100..900&display=swap');
+
 /* DigiDAW workspace skin — visual only.
    Unifies the transport + arrangement area with the mixer without changing
    transport callbacks, timeline geometry, zoom math, grid spacing, or audio. */
@@ -26,6 +28,15 @@ main .font-mono {
   font-variation-settings: "YOPQ" 300 !important;
 }
 
+/* Transport-only digital numerics: keep the rest of the DAW on Kumbh Sans. */
+header .font-lcd,
+header > div:nth-child(2) > div:has(> span.major-mono-display-regular) span {
+  font-family: "Azeret Mono", monospace !important;
+  font-optical-sizing: auto;
+  font-style: normal;
+  font-variation-settings: normal !important;
+}
+
 /* --------------------------------------------------------------------------
    Top transport
    Keep the existing 48px height and all component dimensions.
@@ -33,6 +44,7 @@ main .font-mono {
 header {
   background: #0f0f0c !important;
   border: 0 !important;
+  border-bottom: 0.5px solid rgba(255, 217, 0, 0.10) !important;
   box-shadow: none !important;
 }
 
@@ -128,7 +140,7 @@ header div[class*="rounded-full"][class*="w-2"][class*="h-2"] {
   box-shadow: none !important;
 }
 
-/* Timestamp keeps the exact footprint but uses mixer typography. */
+/* Timestamp keeps the exact footprint; only its numeral typeface changes. */
 header > div:nth-child(2) > div:has(> span.major-mono-display-regular) span {
   letter-spacing: 0.02em !important;
 }
@@ -306,6 +318,11 @@ main ::-webkit-scrollbar-thumb {
 
 main ::-webkit-scrollbar-thumb:hover {
   background: #38382d;
+}
+
+/* Timeline ↔ mixer divider: same visual weight as the track hairlines. */
+footer:has(.daw-effect-rack) {
+  border-top: 0.5px solid rgba(255, 217, 0, 0.10) !important;
 }
 
 /* Toast is visually part of the top workspace, so keep it matte too. */
