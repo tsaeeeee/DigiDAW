@@ -1,0 +1,22 @@
+/* Additive clip selection layer for Ctrl/Cmd-click timeline editing. */
+
+#timeline-column [data-digidaw-clip-id].digidaw-multi-selected {
+  border-color: #ffd900 !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 217, 0, 0.82),
+    0 0 10px rgba(255, 217, 0, 0.2) !important;
+  z-index: 31 !important;
+}
+
+#timeline-column [data-digidaw-clip-id].digidaw-multi-selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 23;
+  pointer-events: none;
+  background: rgba(255, 217, 0, 0.055);
+}
+
+body[data-digidaw-multi-select="1"] #timeline-column [data-digidaw-clip-id].digidaw-multi-selected {
+  cursor: default;
+}
