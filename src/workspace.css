@@ -69,9 +69,9 @@ header button:hover:not(:disabled) {
   box-shadow: none !important;
 }
 
-/* Preserve active yellow semantics for play/metronome/mixer/etc. */
-header button[class*="bg-[#ffd900]"],
-header button[class*="bg-[#ffd900]/"],
+/* Preserve active yellow semantics for play/metronome/mixer/etc.
+   Exact-token matching avoids treating hover:bg-[#ffd900] as an active state. */
+header button[class~="bg-[#ffd900]"],
 header button[aria-pressed="true"] {
   background: #ffd900 !important;
   background-image: none !important;
@@ -79,8 +79,8 @@ header button[aria-pressed="true"] {
   box-shadow: none !important;
 }
 
-header button[class*="bg-[#ffd900]"]:hover:not(:disabled),
-header button[class*="bg-[#ffd900]/"]:hover:not(:disabled) {
+header button[class~="bg-[#ffd900]"]:hover:not(:disabled),
+header button[aria-pressed="true"]:hover:not(:disabled) {
   background: #ffd900 !important;
   color: #11100a !important;
 }
@@ -190,7 +190,7 @@ main > div > div > div:first-child > div:not(:first-child):not(:last-child) {
   box-shadow: none !important;
 }
 
-main > div > div > div:first-child > div[class*="bg-[#2d2a1d]"] {
+main > div > div > div:first-child > div:not(:first-child):not(:last-child)[class~="bg-[#2d2a1d]"] {
   background: #1d1c12 !important;
   border-bottom-color: rgba(255, 217, 0, 0.11) !important;
   box-shadow: none !important;
@@ -204,13 +204,13 @@ main > div > div > div:first-child > div:not(:first-child):not(:last-child) butt
   box-shadow: none !important;
 }
 
-main > div > div > div:first-child > div:not(:first-child):not(:last-child) button[class*="bg-[#1a1a1a]"] {
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) button[class~="bg-[#1a1a1a]"] {
   background: #27271f !important;
   color: #aaa99d !important;
 }
 
-main > div > div > div:first-child > div:not(:first-child):not(:last-child) button[class*="bg-[#facc15]"],
-main > div > div > div:first-child > div:not(:first-child):not(:last-child) button[class*="bg-[#fb923c]"] {
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) button[class~="bg-[#facc15]"],
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) button[class~="bg-[#fb923c]"] {
   background: #ffd900 !important;
   color: #11100a !important;
 }
@@ -273,7 +273,7 @@ main > div > div > div:first-child > div:last-child {
   box-shadow: none !important;
 }
 
-#timeline-column > [class*="h-[80px]"][class*="bg-white/"] {
+#timeline-column > [class*="h-[80px]"][class~="bg-white/[0.02]"] {
   background: #171710 !important;
   border-bottom-color: rgba(255, 217, 0, 0.095) !important;
 }
@@ -298,7 +298,6 @@ main ::-webkit-scrollbar-thumb:hover {
 }
 
 /* Toast is visually part of the top workspace, so keep it matte too. */
-body > div #root + div,
 .fixed.top-14 {
   box-shadow: none !important;
 }
