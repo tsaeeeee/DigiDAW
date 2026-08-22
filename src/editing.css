@@ -113,8 +113,11 @@ header div:has(> .digidaw-tool-host) {
 .digidaw-tool-menu {
   position: absolute;
   top: calc(100% + 5px);
-  right: 0;
-  width: 104px;
+  left: 0;
+  right: auto;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 4px;
   border: 0;
   border-radius: 6px;
