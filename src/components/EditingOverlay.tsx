@@ -128,13 +128,50 @@ function bindCutGesture(clipElement: HTMLElement) {
   }, true);
 }
 
+function syncZoomRoller(slider: HTMLInputElement) {
+  const row = slider.parentElement;
+  if (!row) return;
+  row.classList.add('digidaw-zoom-row');
+  slider.classList.add('digidaw-zoom-wheel-input');
+
+  let roller = row.querySelector<HTMLElement>(':scope > .digidaw-zoom-roller');
+  if (!roller) {
+    roller = document.createElement('div');
+    roller.className = 'digidaw-zoom-roller';
+    roller.setAttribute('aria-hidden', 'true');
+
+    const ribs = document.createElement('div');
+    ribs.className = 'digidaw-zoom-ribs';
+    for (let index = 0; index < 9; index++) {
+      const rib = document.createElement('span');
+      rib.className = 'digidaw-zoom-rib';
+      ribs.appendChild(rib);
+    }
+
+    const indicator = document.createElement('span');
+    indicator.className = 'digidaw-zoom-indicator';
+    roller.appendChild(ribs);
+    roller.appendChild(indicator);
+    row.insertBefore(roller, slider);
+  }
+
+  const minimum = Number(slider.min || 0);
+  const maximum = Number(slider.max || 100);
+  const value = Number(slider.value);
+  const range = Math.max(1, maximum - minimum);
+  const normalized = clamp((value - minimum) / range, 0, 1);
+  const indicator = roller.querySelector<HTMLElement>('.digidaw-zoom-indicator');
+  if (indicator) indicator.style.left = `${8 + normalized * 84}%`;
+}
+
 function bindZoomPivot(slider: HTMLInputElement) {
-  slider.classList.add('digidaw-zoom-wheel');
+  syncZoomRoller(slider);
   if (slider.dataset.zoomPivotBound === '1') return;
   slider.dataset.zoomPivotBound = '1';
   slider.dataset.zoomPivotValue = slider.value;
 
   slider.addEventListener('input', () => {
+    syncZoomRoller(slider);
     const previousZoom = Number(slider.dataset.zoomPivotValue ?? slider.value);
     const nextZoom = Number(slider.value);
     slider.dataset.zoomPivotValue = String(nextZoom);
