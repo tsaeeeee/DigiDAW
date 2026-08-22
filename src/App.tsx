@@ -865,16 +865,11 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
       const meterW = meterCanvasRef.current!.width;
       const meterH = meterCanvasRef.current!.height;
       meterCtx.clearRect(0, 0, meterW, meterH);
-      meterCtx.fillStyle = '#111';
+      meterCtx.fillStyle = '#0b0b08';
       meterCtx.fillRect(0, 0, meterW, meterH);
       
-      const gradient = meterCtx.createLinearGradient(0, 0, 0, meterH);
-      gradient.addColorStop(0, '#ef4444');
-      gradient.addColorStop(0.2, '#facc15');
-      gradient.addColorStop(0.5, '#22c55e');
-      gradient.addColorStop(1, '#15803d');
-      
-      meterCtx.fillStyle = gradient;
+      // Flat brand meter: visual-only change, no level math/routing change.
+      meterCtx.fillStyle = '#ffd900';
       
       // Left and Right channels - Logarithmic scaling
       const colW = Math.floor((meterW - 1) / 2);
@@ -895,7 +890,7 @@ function ChannelStrip({ track, updateParams, updateEffect, analyser, isMaster, i
       meterCtx.fillRect(meterW - colW, meterH - hR, colW, hR);
 
       // Draw 1px middle gap/divider
-      meterCtx.fillStyle = '#000';
+      meterCtx.fillStyle = '#0b0b08';
       meterCtx.fillRect(colW, 0, meterW - colW * 2, meterH);
 
       frameId = requestAnimationFrame(render);
@@ -1161,10 +1156,10 @@ function MiniAudioDisplay({ masterAnalyser, isPlaying }: MiniAudioDisplayProps) 
               }
             }
 
+            // White-noise reference on logarithmic bands: do not apply the
+            // former rising high-frequency tilt that compensated pink noise.
             if (maxDb > -100) {
-              const tiltOffset = (i - 2) * 1.8;
-              const compensatedDb = maxDb + tiltOffset;
-              heightPercent = dbToLevel(compensatedDb);
+              heightPercent = dbToLevel(maxDb);
             }
           }
 
