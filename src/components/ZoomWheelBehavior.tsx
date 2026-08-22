@@ -12,29 +12,6 @@ function setNativeRangeValue(input: HTMLInputElement, value: number) {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-function spinRoller(roller: HTMLElement, deltaPixels: number) {
-  const step = 12;
-  const current = Number(roller.dataset.rollPhase ?? 0);
-  const next = ((current + deltaPixels) % step + step) % step;
-  roller.dataset.rollPhase = String(next);
-  roller.style.setProperty('--digidaw-roll-offset', `${next}px`);
-}
-
-function applyZoomDelta(input: HTMLInputElement, delta: number) {
-  const minimum = Number(input.min || 10);
-  const maximum = Number(input.max || 500);
-  const current = Number(input.value);
-
-  const residual = Number(input.dataset.rollResidual ?? 0) + delta;
-  const whole = residual >= 0 ? Math.floor(residual) : Math.ceil(residual);
-  input.dataset.rollResidual = String(residual - whole);
-  if (whole === 0) return;
-
-  const next = clamp(current + whole, minimum, maximum);
-  if (next === current) return;
-  setNativeRangeValue(input, next);
-}
-
 function bindRoller(input: HTMLInputElement, roller: HTMLElement) {
   if (roller.dataset.infiniteRollBound === '1') return () => {};
   roller.dataset.infiniteRollBound = '1';
@@ -48,11 +25,72 @@ function bindRoller(input: HTMLInputElement, roller: HTMLElement) {
   roller.setAttribute('aria-valuenow', input.value);
   roller.title = 'Drag or scroll to zoom timeline';
 
+  const minimum = Number(input.min || 10);
+  const maximum = Number(input.max || 500);
+
   let activePointerId: number | null = null;
   let lastX = 0;
+  let targetZoom = Number(input.value);
+  let targetRoll = Number(roller.dataset.rollPhase ?? 0);
+  let renderedRoll = targetRoll;
+  let animationFrame = 0;
+  let isInternalInput = false;
 
   const syncAria = () => {
     roller.setAttribute('aria-valuenow', input.value);
+    if (!isInternalInput) targetZoom = clamp(Number(input.value), minimum, maximum);
+  };
+
+  const scheduleAnimation = () => {
+    if (animationFrame) return;
+
+    const tick = () => {
+      animationFrame = 0;
+
+      // Smooth the visible roller independently from the clamped zoom value.
+      // Because the rib texture repeats, renderedRoll can grow forever.
+      const rollError = targetRoll - renderedRoll;
+      if (Math.abs(rollError) > 0.01) {
+        renderedRoll += rollError * 0.34;
+        roller.dataset.rollPhase = String(renderedRoll);
+        roller.style.setProperty('--digidaw-roll-offset', `${renderedRoll}px`);
+      } else {
+        renderedRoll = targetRoll;
+        roller.dataset.rollPhase = String(renderedRoll);
+        roller.style.setProperty('--digidaw-roll-offset', `${renderedRoll}px`);
+      }
+
+      // Zoom follows the user's intent with damping instead of jumping once per
+      // pointer/wheel event. Integer steps are still used because AppBase stores
+      // zoom as an integer PX_PER_SECOND value.
+      const currentZoom = Number(input.value);
+      const zoomError = targetZoom - currentZoom;
+      if (Math.abs(zoomError) >= 0.5) {
+        const easedStep = clamp(zoomError * 0.24, -5, 5);
+        let nextZoom = Math.round(currentZoom + easedStep);
+        if (nextZoom === currentZoom) nextZoom += zoomError > 0 ? 1 : -1;
+        nextZoom = clamp(nextZoom, minimum, maximum);
+
+        if (nextZoom !== currentZoom) {
+          isInternalInput = true;
+          setNativeRangeValue(input, nextZoom);
+          isInternalInput = false;
+        }
+      }
+
+      const rollerStillMoving = Math.abs(targetRoll - renderedRoll) > 0.02;
+      const zoomStillMoving = Math.abs(targetZoom - Number(input.value)) >= 0.5;
+      if (rollerStillMoving || zoomStillMoving) animationFrame = requestAnimationFrame(tick);
+    };
+
+    animationFrame = requestAnimationFrame(tick);
+  };
+
+  const addIntent = (rollDelta: number, zoomDelta: number) => {
+    // Visual motion never clamps. Zoom intent does.
+    targetRoll += rollDelta;
+    targetZoom = clamp(targetZoom + zoomDelta, minimum, maximum);
+    scheduleAnimation();
   };
 
   const onPointerDown = (event: PointerEvent) => {
@@ -60,6 +98,7 @@ function bindRoller(input: HTMLInputElement, roller: HTMLElement) {
     event.preventDefault();
     activePointerId = event.pointerId;
     lastX = event.clientX;
+    targetZoom = Number(input.value);
     roller.classList.add('is-rolling');
     try { roller.setPointerCapture(event.pointerId); } catch {}
   };
@@ -71,10 +110,9 @@ function bindRoller(input: HTMLInputElement, roller: HTMLElement) {
     lastX = event.clientX;
     if (deltaX === 0) return;
 
-    // Visual roll is intentionally independent from the zoom value. It keeps
-    // moving even after the zoom itself reaches its min/max clamp.
-    spinRoller(roller, deltaX);
-    applyZoomDelta(input, deltaX * 0.85);
+    // Slightly reduced sensitivity + rAF damping makes fine zoom adjustments
+    // much easier while keeping long drags fast enough.
+    addIntent(deltaX, deltaX * 0.62);
   };
 
   const finishPointer = (event: PointerEvent) => {
@@ -91,20 +129,21 @@ function bindRoller(input: HTMLInputElement, roller: HTMLElement) {
       : -event.deltaY;
     if (raw === 0) return;
 
-    const visualDelta = clamp(raw * 0.14, -18, 18);
-    spinRoller(roller, visualDelta);
-    applyZoomDelta(input, clamp(raw * 0.08, -12, 12));
+    // Wheel/trackpad deltas vary wildly by browser/device, so cap one event's
+    // contribution and let the animation loop blend consecutive events.
+    const rollDelta = clamp(raw * 0.16, -20, 20);
+    const zoomDelta = clamp(raw * 0.055, -8, 8);
+    addIntent(rollDelta, zoomDelta);
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
-    let delta = 0;
-    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') delta = 4;
-    else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') delta = -4;
+    let direction = 0;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') direction = 1;
+    else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') direction = -1;
     else return;
 
     event.preventDefault();
-    spinRoller(roller, delta > 0 ? 6 : -6);
-    applyZoomDelta(input, delta);
+    addIntent(direction * 8, direction * 4);
   };
 
   input.addEventListener('input', syncAria);
@@ -116,6 +155,7 @@ function bindRoller(input: HTMLInputElement, roller: HTMLElement) {
   roller.addEventListener('keydown', onKeyDown);
 
   return () => {
+    if (animationFrame) cancelAnimationFrame(animationFrame);
     input.removeEventListener('input', syncAria);
     roller.removeEventListener('pointerdown', onPointerDown);
     roller.removeEventListener('pointermove', onPointerMove);
