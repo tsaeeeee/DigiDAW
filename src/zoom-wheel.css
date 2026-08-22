@@ -21,24 +21,26 @@
   pointer-events: none !important;
 }
 
-/* Use a seamless repeating rib texture so the wheel can visually roll forever.
-   The previous individual rib elements stay in the DOM but are hidden. */
+/* Exact 12px rib pitch. A fixed-size tile avoids browser rounding differences
+   between repeating-gradient stops, so every rib keeps identical spacing. */
 .digidaw-zoom-ribs {
   inset: 4px 8px !important;
   display: block !important;
-  background-image: repeating-linear-gradient(
+  background-image: linear-gradient(
     90deg,
     transparent 0,
-    transparent 8px,
-    #3c3b30 8px,
-    #3c3b30 10px,
-    transparent 10px,
+    transparent 5px,
+    #3c3b30 5px,
+    #3c3b30 7px,
+    transparent 7px,
     transparent 12px
   ) !important;
-  background-position-x: var(--digidaw-roll-offset, 0px) !important;
+  background-size: 12px 100% !important;
+  background-position: var(--digidaw-roll-offset, 0px) 0 !important;
   background-repeat: repeat-x !important;
   will-change: background-position;
   transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .digidaw-zoom-rib {
