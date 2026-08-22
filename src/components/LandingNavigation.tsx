@@ -51,7 +51,7 @@ export function LandingNavigation() {
             aria-pressed={view === 'digidaw'}
           >
             <Disc3 />
-            <span>DigiDAW</span>
+            <span>Launch</span>
           </button>
           <button
             type="button"
@@ -65,7 +65,6 @@ export function LandingNavigation() {
         </nav>
 
         <div className="digidaw-landing-sidebar-footer">
-          <span>Free browser-based mixing & mastering workstation.</span>
           <strong>Free. Legal. Accessible.</strong>
         </div>
       </aside>
