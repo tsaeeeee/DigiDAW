@@ -5,6 +5,11 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function snapToDevicePixel(value: number) {
+  const ratio = Math.max(1, window.devicePixelRatio || 1);
+  return Math.round(value * ratio) / ratio;
+}
+
 function setNativeRangeValue(input: HTMLInputElement, value: number) {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
   if (setter) setter.call(input, String(value));
@@ -41,6 +46,12 @@ function bindRoller(input: HTMLInputElement, roller: HTMLElement) {
     if (!isInternalInput) targetZoom = clamp(Number(input.value), minimum, maximum);
   };
 
+  const paintRoll = () => {
+    roller.dataset.rollPhase = String(renderedRoll);
+    const alignedRoll = snapToDevicePixel(renderedRoll);
+    roller.style.setProperty('--digidaw-roll-offset', `${alignedRoll}px`);
+  };
+
   const scheduleAnimation = () => {
     if (animationFrame) return;
 
@@ -48,17 +59,15 @@ function bindRoller(input: HTMLInputElement, roller: HTMLElement) {
       animationFrame = 0;
 
       // Smooth the visible roller independently from the clamped zoom value.
-      // Because the rib texture repeats, renderedRoll can grow forever.
+      // The exact 12px texture repeats forever; only the painted offset is
+      // snapped to the physical pixel grid so every rib stays equally crisp.
       const rollError = targetRoll - renderedRoll;
       if (Math.abs(rollError) > 0.01) {
         renderedRoll += rollError * 0.34;
-        roller.dataset.rollPhase = String(renderedRoll);
-        roller.style.setProperty('--digidaw-roll-offset', `${renderedRoll}px`);
       } else {
         renderedRoll = targetRoll;
-        roller.dataset.rollPhase = String(renderedRoll);
-        roller.style.setProperty('--digidaw-roll-offset', `${renderedRoll}px`);
       }
+      paintRoll();
 
       // Zoom follows the user's intent with damping instead of jumping once per
       // pointer/wheel event. Integer steps are still used because AppBase stores
