@@ -50,15 +50,28 @@ footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > label:first-child {
   opacity: 0.9;
 }
 
-/* Leave FX rack behavior/layout intact. Only remove the extra glossy treatment
-   introduced by the previous mixer skin. */
+/* Preserve FX rack layout/behavior, but make its in-mixer treatment flat too. */
 .daw-effect-rack {
   margin-top: 1px !important;
   margin-bottom: 1px !important;
 }
 
 .daw-effect-rack > div:first-child {
+  border: 0 !important;
+  outline: 0 !important;
   background: #10100d !important;
+  box-shadow: none !important;
+}
+
+.daw-effect-rack > div:first-child > div {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+.daw-effect-rack > div:first-child button {
+  border: 0 !important;
+  outline: 0 !important;
   box-shadow: none !important;
 }
 
