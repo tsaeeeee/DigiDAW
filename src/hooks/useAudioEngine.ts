@@ -540,6 +540,19 @@ export function useAudioEngine() {
     return true;
   }, [rebuildTrackPlayers, recordHistory]);
 
+  const deleteClip = useCallback((trackId: string, clipId: string) => {
+    const track = tracksRef.current.find(item => item.id === trackId);
+    const clip = track?.clips.find(item => item.id === clipId);
+    if (!track || !clip) return false;
+    recordHistory(`clip-delete:${clipId}`);
+    const clips = track.clips.filter(item => item.id !== clipId);
+    const next = tracksRef.current.map(item => item.id === trackId ? { ...item, clips } : item);
+    tracksRef.current = next;
+    setTracks(next);
+    rebuildTrackPlayers(trackId, clips);
+    return true;
+  }, [rebuildTrackPlayers, recordHistory]);
+
   const updateClipFades = useCallback((trackId: string, clipId: string, fadeInValue: number, fadeOutValue: number) => {
     const track = tracksRef.current.find(item => item.id === trackId);
     const clip = track?.clips.find(item => item.id === clipId);
@@ -735,10 +748,11 @@ export function useAudioEngine() {
       undo,
       redo,
       splitClipAtTime,
+      deleteClip,
       updateClipFades,
       getCurrentTime,
     });
-  }, [canRedo, canUndo, getCurrentTime, redo, splitClipAtTime, tracks, undo, updateClipFades]);
+  }, [canRedo, canUndo, deleteClip, getCurrentTime, redo, splitClipAtTime, tracks, undo, updateClipFades]);
 
   return {
     tracks,
@@ -766,6 +780,7 @@ export function useAudioEngine() {
     updateClipPosition,
     updateClipFades,
     splitClipAtTime,
+    deleteClip,
     undo,
     redo,
     canUndo,
