@@ -90,16 +90,30 @@ export function LandingNavigation() {
       </aside>
 
       {workspaceActive && manualOpen && view === 'digidaw' && (
-        <section className="digidaw-return-launcher" aria-label="Return to DigiDAW session">
-          <div className="digidaw-return-launcher-content">
-            <img src="/digidaw-logo.svg" alt="DigiDAW" />
-            <div>
-              <h1>DigiDAW</h1>
-              <p>Professional Linear Audio Workstation for Mixing &amp; Mastering</p>
+        <section
+          className="fixed top-0 right-0 bottom-0 z-[1100] bg-[#151619] text-white font-sans select-none"
+          style={{ left: 'var(--digidaw-sidebar-width)' }}
+          aria-label="Return to DigiDAW session"
+        >
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+            <div className="w-20 h-20 mb-6">
+              <img src="/digidaw-logo.svg" alt="DigiDAW" className="w-full h-full object-contain" />
             </div>
-            <button type="button" onClick={returnToSession}>Launch</button>
+            <div>
+              <h1 className="text-3xl syncopate-regular font-normal tracking-tight text-white">DigiDAW</h1>
+              <p className="text-[#8e9299] text-sm mt-2 font-medium">Professional Linear Audio Workstation for Mixing &amp; Mastering</p>
+            </div>
+            <button
+              type="button"
+              onClick={returnToSession}
+              className="mt-8 px-8 py-3.5 bg-[#ffd900] hover:bg-[#ffe55c] active:scale-95 transition-all rounded-full font-bold tracking-wider text-sm text-black shadow-lg shadow-[#ffd900]/20 cursor-pointer"
+            >
+              Launch
+            </button>
           </div>
-          <div className="digidaw-return-launcher-footer">Powered by Crescentials Record</div>
+          <div className="absolute bottom-12 left-0 right-0 text-center text-xs text-[#71717a] font-medium tracking-wide">
+            Powered by Crescentials Record
+          </div>
         </section>
       )}
 
