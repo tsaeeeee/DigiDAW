@@ -37,6 +37,8 @@
   ) !important;
   background-position-x: var(--digidaw-roll-offset, 0px) !important;
   background-repeat: repeat-x !important;
+  will-change: background-position;
+  transform: translateZ(0);
 }
 
 .digidaw-zoom-rib {
