@@ -2,6 +2,7 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import './mixer.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
