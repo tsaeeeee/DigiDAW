@@ -1,0 +1,241 @@
+/* DigiDAW mixer v2 — visual only.
+   Keep the existing mixer DOM/callbacks; this layer only changes presentation. */
+
+footer:has(.daw-effect-rack),
+footer:has(.daw-effect-rack) * {
+  font-family: "Kumbh Sans", sans-serif !important;
+  font-optical-sizing: auto;
+  font-variation-settings: "YOPQ" 300;
+}
+
+footer:has(.daw-effect-rack) {
+  gap: 4px !important;
+  padding: 5px 6px !important;
+  background: #0f0f0c !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  align-items: stretch;
+}
+
+/* Compact channel shell: warm-black, flat, no card stroke. */
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) {
+  min-width: 108px !important;
+  width: 108px !important;
+  margin: 0 !important;
+  padding: 5px !important;
+  gap: 4px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: #171711 !important;
+  box-shadow: none !important;
+}
+
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack-master) {
+  min-width: 108px !important;
+  width: 108px !important;
+  border: 0 !important;
+  background: #1b1a10 !important;
+  box-shadow: none !important;
+}
+
+/* Semantic track color stays as a tiny strip, not a channel outline. */
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > label:first-child {
+  height: 2px !important;
+  left: 7px !important;
+  right: 7px !important;
+  top: 0 !important;
+  border: 0 !important;
+  border-radius: 0 0 3px 3px !important;
+  box-shadow: none !important;
+  opacity: 0.9;
+}
+
+/* Leave FX rack behavior/layout intact. Only remove the extra glossy treatment
+   introduced by the previous mixer skin. */
+.daw-effect-rack {
+  margin-top: 1px !important;
+  margin-bottom: 1px !important;
+}
+
+.daw-effect-rack > div:first-child {
+  background: #10100d !important;
+  box-shadow: none !important;
+}
+
+/* Pan section — flat matte, no visible strokes. */
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:has(input[type="range"][min="-1"][max="1"]) {
+  height: 36px !important;
+  margin: 0 !important;
+  padding: 3px 4px 0 !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: #12120e !important;
+  box-shadow: none !important;
+}
+
+footer:has(.daw-effect-rack) div:has(> input[type="range"][min="-1"][max="1"]) {
+  border: 0 !important;
+  background: #090907 !important;
+  box-shadow: none !important;
+}
+
+footer:has(.daw-effect-rack) div:has(> input[type="range"][min="-1"][max="1"]) > div:first-child {
+  background: #ffd900 !important;
+  opacity: 0.72;
+}
+
+/* Cancel the inline edge strokes/glow used by the visual pan fill. */
+footer:has(.daw-effect-rack) div:has(> input[type="range"][min="-1"][max="1"]) > div:nth-child(3) {
+  border: 0 !important;
+  box-shadow: none !important;
+  background-color: rgba(255, 217, 0, 0.22) !important;
+}
+
+/* Volume module + numerical readout. */
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:nth-of-type(3) {
+  padding: 0 2px 2px !important;
+}
+
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:nth-of-type(3) > div:first-child {
+  min-height: 25px !important;
+  margin-bottom: 6px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: #0d0d0a !important;
+  box-shadow: none !important;
+}
+
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:nth-of-type(3) > div:first-child span,
+footer:has(.daw-effect-rack) .major-mono-display-regular,
+footer:has(.daw-effect-rack) .font-mono,
+footer:has(.daw-effect-rack) .font-number,
+footer:has(.daw-effect-rack) .major-mono {
+  font-family: "Kumbh Sans", sans-serif !important;
+  font-variation-settings: "YOPQ" 300 !important;
+  letter-spacing: 0 !important;
+}
+
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:nth-of-type(3) > div:first-child span {
+  color: #ffd900 !important;
+  font-size: 10px !important;
+  font-weight: 650 !important;
+  text-shadow: none !important;
+}
+
+/* Meter well is flat; actual live meter remains the existing canvas. */
+footer:has(.daw-effect-rack) canvas[width="12"][height="210"] {
+  border: 0 !important;
+  border-radius: 3px !important;
+  background: #080806 !important;
+  box-shadow: none !important;
+}
+
+/* Fader rail and cap. Existing invisible range input still handles interaction. */
+footer:has(.daw-effect-rack) div:has(> input[orient="vertical"]) > div:first-child {
+  width: 3px !important;
+  border: 0 !important;
+  border-radius: 3px !important;
+  background: #080806 !important;
+  box-shadow: none !important;
+}
+
+footer:has(.daw-effect-rack) input[orient="vertical"] + div {
+  width: 27px !important;
+  height: 10px !important;
+  border: 0 !important;
+  border-radius: 3px !important;
+  background: #ffd900 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+footer:has(.daw-effect-rack) input[orient="vertical"] + div > div {
+  height: 1px !important;
+  background: rgba(36, 31, 0, 0.65) !important;
+  box-shadow: none !important;
+}
+
+/* Keep scale ticks quiet and warm-neutral. */
+footer:has(.daw-effect-rack) div:has(> canvas[width="12"][height="210"]) ~ div,
+footer:has(.daw-effect-rack) div:has(> canvas[width="12"][height="210"]) {
+  font-family: "Kumbh Sans", sans-serif !important;
+}
+
+/* Mute / Solo and channel-name bank — flat fills, no outlines or bevels. */
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:nth-of-type(4) {
+  gap: 4px !important;
+  padding: 0 !important;
+}
+
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:nth-of-type(4) button {
+  height: 25px !important;
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 5px !important;
+  background: #27271f !important;
+  background-image: none !important;
+  color: #aaa99d !important;
+  box-shadow: none !important;
+  text-transform: none !important;
+}
+
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:nth-of-type(4) button:hover {
+  border: 0 !important;
+  color: #e8e5cf !important;
+  background: #303025 !important;
+}
+
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:nth-of-type(4) button[class*="bg-[#facc15]"],
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:nth-of-type(4) button[class*="bg-[#fb923c]"] {
+  border: 0 !important;
+  background: #ffd900 !important;
+  background-image: none !important;
+  color: #11100a !important;
+  box-shadow: none !important;
+}
+
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack) > div:nth-of-type(4) > div:last-child {
+  height: 29px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: #11110d !important;
+  background-image: none !important;
+  color: #deddd2 !important;
+  box-shadow: none !important;
+}
+
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack-master) > div:nth-of-type(4) > div:last-child {
+  border: 0 !important;
+  background: #ffd900 !important;
+  background-image: none !important;
+  color: #11100a !important;
+  box-shadow: none !important;
+}
+
+/* Remove any legacy master-analysis reservation from the first mixer pass. */
+footer:has(.daw-effect-rack) > div:has(> .daw-effect-rack-master) > div:nth-of-type(3) {
+  width: 100% !important;
+  align-self: stretch !important;
+  flex: 1 1 auto !important;
+}
+
+.daw-master-analysis {
+  display: none !important;
+}
+
+/* Add-track tile: no dashed stroke; it appears through opacity only. */
+footer:has(.daw-effect-rack) > button:last-child {
+  min-width: 58px !important;
+  height: 100% !important;
+  margin: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 6px !important;
+  background: #141410 !important;
+  box-shadow: none !important;
+}
+
+footer:has(.daw-effect-rack) > button:last-child:hover {
+  border: 0 !important;
+  background: #1a1a13 !important;
+}
