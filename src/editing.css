@@ -1,5 +1,5 @@
 /* DigiDAW non-destructive editing controls.
-   These styles only decorate existing transport/track/clip DOM. */
+   These styles only decorate existing transport/timeline/clip DOM. */
 
 .digidaw-history-host {
   display: flex;
@@ -49,62 +49,138 @@
   background: rgba(255, 217, 0, 0.1);
 }
 
-/* Per-track split control. It sits immediately left of upload/delete. */
-.digidaw-cut-track-button {
-  position: absolute !important;
-  top: 7px;
-  right: 48px;
-  z-index: 65;
-  width: 20px !important;
-  height: 20px !important;
-  padding: 0 !important;
+/* Timeline tool selector sits directly to the right of the existing zoom slider. */
+header div:has(> .digidaw-tool-host) {
+  max-width: 280px !important;
+}
+
+.digidaw-tool-host {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  z-index: 75;
+}
+
+.digidaw-tool-select {
+  position: relative;
+}
+
+.digidaw-tool-button {
+  height: 24px !important;
+  min-width: 78px !important;
+  padding: 0 7px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 5px !important;
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 5px !important;
+  background: #27271f !important;
+  color: #aaa99d !important;
+  box-shadow: none !important;
+  font-family: "Kumbh Sans", sans-serif !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+}
+
+.digidaw-tool-button:hover,
+.digidaw-tool-button.is-cut {
+  background: #303025 !important;
+  color: #ffd900 !important;
+}
+
+.digidaw-tool-button > svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.8;
+  flex: 0 0 auto;
+}
+
+.digidaw-tool-button > span {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.digidaw-tool-button .digidaw-tool-chevron {
+  width: 10px;
+  height: 10px;
+  opacity: 0.55;
+}
+
+.digidaw-tool-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  width: 104px;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: #171711;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+  z-index: 120;
+}
+
+.digidaw-tool-menu button {
+  width: 100% !important;
+  height: 27px !important;
+  padding: 0 7px !important;
   display: flex !important;
   align-items: center !important;
-  justify-content: center !important;
+  justify-content: flex-start !important;
+  gap: 7px !important;
   border: 0 !important;
   outline: 0 !important;
   border-radius: 4px !important;
   background: transparent !important;
-  color: #716f64 !important;
+  color: #aaa99d !important;
   box-shadow: none !important;
-  opacity: 0.48;
+  font-family: "Kumbh Sans", sans-serif !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
   cursor: pointer;
 }
 
-main > div > div > div:first-child > div:hover > .digidaw-cut-track-button {
-  opacity: 0.9;
+.digidaw-tool-menu button:hover {
+  background: #27271f !important;
+  color: #eeeacd !important;
 }
 
-.digidaw-cut-track-button:hover:not(:disabled) {
-  background: #2b2b22 !important;
-  color: #ffd900 !important;
+.digidaw-tool-menu button.is-selected {
+  background: #ffd900 !important;
+  color: #11100a !important;
 }
 
-.digidaw-cut-track-button:disabled {
-  opacity: 0.14 !important;
-  cursor: default !important;
-}
-
-.digidaw-cut-track-button svg {
+.digidaw-tool-menu button svg {
   width: 12px;
   height: 12px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
-.digidaw-cut-track-button.is-miss {
-  animation: digidaw-cut-miss 260ms ease-out;
+/* Cut mode: the clip body becomes the blade target. Fade edge zones are
+   intentionally disabled while the Cut tool is active. */
+body[data-digidaw-tool="cut"] #timeline-column [data-digidaw-clip-id] {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='6' cy='7' r='3' fill='none' stroke='%23ffd900' stroke-width='1.8'/%3E%3Ccircle cx='6' cy='17' r='3' fill='none' stroke='%23ffd900' stroke-width='1.8'/%3E%3Cpath d='M8.7 8.3 20 14M8.7 15.7 20 6' fill='none' stroke='%23ffd900' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E") 8 12, crosshair !important;
+}
+
+body[data-digidaw-tool="cut"] .digidaw-fade-handle-in,
+body[data-digidaw-tool="cut"] .digidaw-fade-handle-out {
+  pointer-events: none !important;
+}
+
+.digidaw-cut-miss {
+  animation: digidaw-cut-miss 220ms ease-out;
 }
 
 @keyframes digidaw-cut-miss {
-  0%, 100% { color: #716f64; }
-  45% { color: #ff6b5e; background: rgba(255, 107, 94, 0.12); }
+  0%, 100% { filter: none; }
+  45% { filter: brightness(1.45) saturate(0.75); }
 }
 
-/* Fade visuals are hidden until a fade exists or the user enters the edge zone. */
+/* Linear fade overlays. The visible diagonal is intentionally straight — no
+   curve/easing shape in the clip UI. */
 .digidaw-fade-visual-in,
 .digidaw-fade-visual-out {
   position: absolute;
@@ -112,21 +188,20 @@ main > div > div > div:first-child > div:hover > .digidaw-cut-track-button {
   bottom: 0;
   z-index: 24;
   pointer-events: none;
-  opacity: 0.82;
+  opacity: 0.9;
+  background: rgba(255, 217, 0, 0.11);
 }
 
 .digidaw-fade-visual-in {
   left: 0;
   width: var(--digidaw-fade-in, 0%);
-  background: linear-gradient(135deg, rgba(255, 217, 0, 0.23), rgba(255, 217, 0, 0.018) 70%);
-  border-top-right-radius: 100%;
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
 }
 
 .digidaw-fade-visual-out {
   right: 0;
   width: var(--digidaw-fade-out, 0%);
-  background: linear-gradient(225deg, rgba(255, 217, 0, 0.23), rgba(255, 217, 0, 0.018) 70%);
-  border-top-left-radius: 100%;
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
 }
 
 .digidaw-fade-handle-in,
@@ -142,12 +217,12 @@ main > div > div > div:first-child > div:hover > .digidaw-cut-track-button {
 
 .digidaw-fade-handle-in {
   left: 0;
-  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 19C8 19 10 7 21 5' fill='none' stroke='%23ffd900' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M3 4v16' stroke='%23ffd900' stroke-width='1.5'/%3E%3C/svg%3E") 3 12, ew-resize;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 19 21 5' fill='none' stroke='%23ffd900' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M3 4v16' stroke='%23ffd900' stroke-width='1.5'/%3E%3C/svg%3E") 3 12, ew-resize;
 }
 
 .digidaw-fade-handle-out {
   right: 0;
-  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 5C14 7 16 19 21 19' fill='none' stroke='%23ffd900' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M21 4v16' stroke='%23ffd900' stroke-width='1.5'/%3E%3C/svg%3E") 21 12, ew-resize;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 5 21 19' fill='none' stroke='%23ffd900' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M21 4v16' stroke='%23ffd900' stroke-width='1.5'/%3E%3C/svg%3E") 21 12, ew-resize;
 }
 
 .digidaw-fade-handle-in::after,
