@@ -7,6 +7,7 @@ export interface DigiDAWEditingApi {
   undo: () => void;
   redo: () => void;
   splitClipAtTime: (trackId: string, atTime: number) => boolean;
+  deleteClip: (trackId: string, clipId: string) => boolean;
   updateClipFades: (trackId: string, clipId: string, fadeIn: number, fadeOut: number) => void;
   getCurrentTime: () => number;
 }
