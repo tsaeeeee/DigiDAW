@@ -49,72 +49,109 @@
   background: rgba(255, 217, 0, 0.1);
 }
 
-/* Compact mouse-wheel inspired timeline zoom control. The native range input
-   remains intact so its existing zoom behavior and accessibility stay valid. */
-.digidaw-zoom-wheel {
-  flex: 0 0 92px !important;
-  width: 92px !important;
+/* Flat segmented horizontal roller for timeline zoom. The actual native range
+   input remains layered on top, preserving its current keyboard/pointer behavior. */
+.digidaw-zoom-row {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.digidaw-zoom-roller {
+  position: relative;
+  flex: 0 0 106px;
+  width: 106px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: #14140f;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.digidaw-zoom-ribs {
+  position: absolute;
+  inset: 4px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.digidaw-zoom-rib {
+  width: 2px;
+  height: 13px;
+  flex: 0 0 2px;
+  border-radius: 2px;
+  background: #343329;
+  opacity: 0.9;
+}
+
+.digidaw-zoom-rib:nth-child(2),
+.digidaw-zoom-rib:nth-child(8) {
+  height: 15px;
+  background: #3b3a2f;
+}
+
+.digidaw-zoom-rib:nth-child(3),
+.digidaw-zoom-rib:nth-child(7) {
+  height: 17px;
+  background: #414034;
+}
+
+.digidaw-zoom-rib:nth-child(4),
+.digidaw-zoom-rib:nth-child(6) {
+  height: 18px;
+  background: #474638;
+}
+
+.digidaw-zoom-rib:nth-child(5) {
+  height: 19px;
+  background: #4c4b3c;
+}
+
+.digidaw-zoom-indicator {
+  position: absolute;
+  top: 5px;
+  width: 3px;
+  height: 14px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: #ffd900;
+  box-shadow: none;
+  transition: left 45ms linear;
+}
+
+.digidaw-zoom-wheel-input {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  z-index: 4 !important;
+  width: 106px !important;
   height: 24px !important;
-  padding: 0 8px !important;
   margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0 !important;
   appearance: none !important;
   -webkit-appearance: none !important;
-  background: #171711 !important;
-  border: 0 !important;
-  outline: 0 !important;
-  border-radius: 999px !important;
-  box-shadow: none !important;
   cursor: ew-resize !important;
 }
 
-.digidaw-zoom-wheel::-webkit-slider-runnable-track {
-  height: 2px !important;
-  background: #343329 !important;
-  border: 0 !important;
-  border-radius: 999px !important;
+.digidaw-zoom-row:focus-within .digidaw-zoom-roller,
+.digidaw-zoom-row:hover .digidaw-zoom-roller {
+  background: #191912;
 }
 
-.digidaw-zoom-wheel::-webkit-slider-thumb {
-  width: 18px !important;
-  height: 14px !important;
-  margin-top: -6px !important;
-  appearance: none !important;
-  -webkit-appearance: none !important;
-  border: 0 !important;
-  border-radius: 6px !important;
-  background: #555342 !important;
-  box-shadow: none !important;
-  cursor: ew-resize !important;
+.digidaw-zoom-row:focus-within .digidaw-zoom-rib,
+.digidaw-zoom-row:hover .digidaw-zoom-rib {
+  opacity: 1;
 }
 
-.digidaw-zoom-wheel:hover::-webkit-slider-thumb,
-.digidaw-zoom-wheel:focus-visible::-webkit-slider-thumb {
-  background: #ffd900 !important;
-}
-
-.digidaw-zoom-wheel::-moz-range-track {
-  height: 2px !important;
-  background: #343329 !important;
-  border: 0 !important;
-  border-radius: 999px !important;
-}
-
-.digidaw-zoom-wheel::-moz-range-thumb {
-  width: 18px !important;
-  height: 14px !important;
-  border: 0 !important;
-  border-radius: 6px !important;
-  background: #555342 !important;
-  box-shadow: none !important;
-  cursor: ew-resize !important;
-}
-
-.digidaw-zoom-wheel:hover::-moz-range-thumb,
-.digidaw-zoom-wheel:focus-visible::-moz-range-thumb {
-  background: #ffd900 !important;
-}
-
-/* Timeline tool selector sits directly to the right of the existing zoom slider. */
+/* Timeline tool selector sits directly to the right of the existing zoom roller. */
 header div:has(> .digidaw-tool-host) {
   max-width: 280px !important;
 }
