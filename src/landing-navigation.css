@@ -55,7 +55,7 @@ body.digidaw-landing-active #root > div:first-child {
 .digidaw-landing-brand span {
   font-family: 'Syncopate', sans-serif;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: -0.03em;
 }
 
@@ -122,10 +122,6 @@ body.digidaw-landing-active #root > div:first-child {
   font-size: 10px;
   line-height: 1.35;
   max-width: 205px;
-}
-
-.digidaw-landing-sidebar-footer span {
-  opacity: 0.62;
 }
 
 .digidaw-landing-sidebar-footer strong {
@@ -310,8 +306,7 @@ body.digidaw-landing-active #root > div:first-child {
     padding: 20px 12px 18px;
   }
 
-  .digidaw-landing-brand small,
-  .digidaw-landing-sidebar-footer span {
+  .digidaw-landing-brand small {
     display: none;
   }
 
