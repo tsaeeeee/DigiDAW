@@ -49,6 +49,71 @@
   background: rgba(255, 217, 0, 0.1);
 }
 
+/* Compact mouse-wheel inspired timeline zoom control. The native range input
+   remains intact so its existing zoom behavior and accessibility stay valid. */
+.digidaw-zoom-wheel {
+  flex: 0 0 92px !important;
+  width: 92px !important;
+  height: 24px !important;
+  padding: 0 8px !important;
+  margin: 0 !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  background: #171711 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+  cursor: ew-resize !important;
+}
+
+.digidaw-zoom-wheel::-webkit-slider-runnable-track {
+  height: 2px !important;
+  background: #343329 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+}
+
+.digidaw-zoom-wheel::-webkit-slider-thumb {
+  width: 18px !important;
+  height: 14px !important;
+  margin-top: -6px !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: #555342 !important;
+  box-shadow: none !important;
+  cursor: ew-resize !important;
+}
+
+.digidaw-zoom-wheel:hover::-webkit-slider-thumb,
+.digidaw-zoom-wheel:focus-visible::-webkit-slider-thumb {
+  background: #ffd900 !important;
+}
+
+.digidaw-zoom-wheel::-moz-range-track {
+  height: 2px !important;
+  background: #343329 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+}
+
+.digidaw-zoom-wheel::-moz-range-thumb {
+  width: 18px !important;
+  height: 14px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: #555342 !important;
+  box-shadow: none !important;
+  cursor: ew-resize !important;
+}
+
+.digidaw-zoom-wheel:hover::-moz-range-thumb,
+.digidaw-zoom-wheel:focus-visible::-moz-range-thumb {
+  background: #ffd900 !important;
+}
+
 /* Timeline tool selector sits directly to the right of the existing zoom slider. */
 header div:has(> .digidaw-tool-host) {
   max-width: 280px !important;
