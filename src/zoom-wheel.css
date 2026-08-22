@@ -1,0 +1,65 @@
+/* Infinite-roll interaction layer for the existing DigiDAW zoom roller.
+   Visual rotation is independent from the clamped zoom value. */
+
+.digidaw-zoom-row {
+  position: relative !important;
+}
+
+.digidaw-zoom-roller {
+  pointer-events: auto !important;
+  cursor: grab !important;
+  touch-action: none !important;
+  outline: 0 !important;
+  user-select: none !important;
+}
+
+.digidaw-zoom-roller.is-rolling {
+  cursor: grabbing !important;
+}
+
+.digidaw-zoom-wheel-input {
+  pointer-events: none !important;
+}
+
+/* Use a seamless repeating rib texture so the wheel can visually roll forever.
+   The previous individual rib elements stay in the DOM but are hidden. */
+.digidaw-zoom-ribs {
+  inset: 4px 8px !important;
+  display: block !important;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 8px,
+    #3c3b30 8px,
+    #3c3b30 10px,
+    transparent 10px,
+    transparent 12px
+  ) !important;
+  background-position-x: var(--digidaw-roll-offset, 0px) !important;
+  background-repeat: repeat-x !important;
+}
+
+.digidaw-zoom-rib {
+  display: none !important;
+}
+
+/* This is now a fixed index marker, not a slider thumb. */
+.digidaw-zoom-indicator {
+  left: 50% !important;
+  transition: none !important;
+  width: 3px !important;
+  height: 14px !important;
+  background: #ffd900 !important;
+  opacity: 0.95 !important;
+}
+
+.digidaw-zoom-roller:hover,
+.digidaw-zoom-roller:focus-visible,
+.digidaw-zoom-roller.is-rolling {
+  background: #191912 !important;
+}
+
+.digidaw-zoom-roller:focus-visible .digidaw-zoom-indicator,
+.digidaw-zoom-roller.is-rolling .digidaw-zoom-indicator {
+  opacity: 1 !important;
+}
