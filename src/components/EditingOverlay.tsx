@@ -128,6 +128,34 @@ function bindCutGesture(clipElement: HTMLElement) {
   }, true);
 }
 
+function bindZoomPivot(slider: HTMLInputElement) {
+  slider.classList.add('digidaw-zoom-wheel');
+  if (slider.dataset.zoomPivotBound === '1') return;
+  slider.dataset.zoomPivotBound = '1';
+  slider.dataset.zoomPivotValue = slider.value;
+
+  slider.addEventListener('input', () => {
+    const previousZoom = Number(slider.dataset.zoomPivotValue ?? slider.value);
+    const nextZoom = Number(slider.value);
+    slider.dataset.zoomPivotValue = String(nextZoom);
+    if (!Number.isFinite(previousZoom) || !Number.isFinite(nextZoom) || previousZoom === nextZoom) return;
+
+    const api = getEditingApi();
+    const timeline = document.getElementById('timeline-column');
+    const scrollContainer = timeline?.parentElement?.parentElement as HTMLElement | null;
+    if (!api || !timeline || !scrollContainer) return;
+
+    const pivotTime = api.getCurrentTime();
+    const scrollDelta = pivotTime * (nextZoom - previousZoom);
+    if (Math.abs(scrollDelta) < 0.01) return;
+
+    requestAnimationFrame(() => {
+      const maxScroll = Math.max(0, scrollContainer.scrollWidth - scrollContainer.clientWidth);
+      scrollContainer.scrollLeft = clamp(scrollContainer.scrollLeft + scrollDelta, 0, maxScroll);
+    });
+  });
+}
+
 function decorateWorkspace() {
   const api = getEditingApi();
   if (!api) return;
@@ -204,6 +232,7 @@ export function EditingOverlay() {
 
       const zoomSlider = document.querySelector<HTMLInputElement>('header input[title="Timeline Zoom"]');
       const zoomRow = zoomSlider?.parentElement;
+      if (zoomSlider) bindZoomPivot(zoomSlider);
       if (zoomRow) {
         let host = zoomRow.querySelector<HTMLElement>(':scope > .digidaw-tool-host');
         if (!host) {
