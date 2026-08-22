@@ -5,32 +5,52 @@ import '../landing-navigation.css';
 
 type LandingView = 'digidaw' | 'documentation';
 
+const OPEN_LANDING_EVENT = 'digidaw:open-landing';
+
 export function LandingNavigation() {
-  const [visible, setVisible] = useState(() => !document.querySelector('header'));
+  const [workspaceActive, setWorkspaceActive] = useState(() => !!document.querySelector('header'));
+  const [manualOpen, setManualOpen] = useState(false);
   const [view, setView] = useState<LandingView>('digidaw');
+
+  const visible = !workspaceActive || manualOpen;
 
   useEffect(() => {
     const root = document.getElementById('root');
     if (!root) return;
 
-    const sync = () => {
-      const workspaceActive = !!document.querySelector('header');
-      const nextVisible = !workspaceActive;
-      setVisible(nextVisible);
-      document.body.classList.toggle('digidaw-landing-active', nextVisible);
+    const syncWorkspace = () => {
+      setWorkspaceActive(!!document.querySelector('header'));
     };
 
-    sync();
-    const observer = new MutationObserver(sync);
+    syncWorkspace();
+    const observer = new MutationObserver(syncWorkspace);
     observer.observe(root, { childList: true, subtree: true });
 
-    return () => {
-      observer.disconnect();
-      document.body.classList.remove('digidaw-landing-active');
-    };
+    return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const openLanding = () => {
+      setView('digidaw');
+      setManualOpen(true);
+    };
+
+    window.addEventListener(OPEN_LANDING_EVENT, openLanding);
+    return () => window.removeEventListener(OPEN_LANDING_EVENT, openLanding);
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle('digidaw-landing-active', visible);
+    return () => document.body.classList.remove('digidaw-landing-active');
+  }, [visible]);
+
   if (!visible) return null;
+
+  const returnToSession = () => {
+    if (!workspaceActive) return;
+    setView('digidaw');
+    setManualOpen(false);
+  };
 
   return (
     <>
@@ -68,6 +88,20 @@ export function LandingNavigation() {
           <strong>Free. Legal. Accessible.</strong>
         </div>
       </aside>
+
+      {workspaceActive && manualOpen && view === 'digidaw' && (
+        <section className="digidaw-return-launcher" aria-label="Return to DigiDAW session">
+          <div className="digidaw-return-launcher-content">
+            <img src="/digidaw-logo.svg" alt="DigiDAW" />
+            <div>
+              <h1>DigiDAW</h1>
+              <p>Professional Linear Audio Workstation for Mixing &amp; Mastering</p>
+            </div>
+            <button type="button" onClick={returnToSession}>Launch</button>
+          </div>
+          <div className="digidaw-return-launcher-footer">Powered by Crescentials Record</div>
+        </section>
+      )}
 
       {view === 'documentation' && (
         <section className="digidaw-documentation-view" aria-label="DigiDAW documentation">
