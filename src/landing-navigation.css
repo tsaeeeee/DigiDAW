@@ -1,0 +1,325 @@
+:root {
+  --digidaw-yellow: #ffd900;
+  --digidaw-ink: #11110d;
+  --digidaw-sidebar-width: clamp(190px, 20vw, 320px);
+}
+
+body.digidaw-landing-active {
+  overflow: hidden;
+}
+
+body.digidaw-landing-active #root > div:first-child {
+  width: calc(100vw - var(--digidaw-sidebar-width)) !important;
+  margin-left: var(--digidaw-sidebar-width) !important;
+}
+
+.digidaw-landing-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 1200;
+  width: var(--digidaw-sidebar-width);
+  min-width: var(--digidaw-sidebar-width);
+  background: var(--digidaw-yellow);
+  color: var(--digidaw-ink);
+  display: flex;
+  flex-direction: column;
+  padding: 26px 18px 22px;
+  box-sizing: border-box;
+  border-right: 1px solid rgba(17, 17, 13, 0.32);
+  font-family: 'Kumbh Sans', sans-serif;
+  user-select: none;
+}
+
+.digidaw-landing-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 44px;
+}
+
+.digidaw-landing-brand img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  filter: brightness(0);
+  flex: 0 0 auto;
+}
+
+.digidaw-landing-brand div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.digidaw-landing-brand span {
+  font-family: 'Syncopate', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.digidaw-landing-brand small {
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.58;
+  letter-spacing: 0.03em;
+}
+
+.digidaw-landing-menu {
+  margin-top: 68px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.digidaw-landing-menu button {
+  appearance: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--digidaw-ink);
+  min-height: 44px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  text-align: left;
+  transition: background 130ms ease, color 130ms ease, transform 130ms ease;
+}
+
+.digidaw-landing-menu button svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+  flex: 0 0 auto;
+}
+
+.digidaw-landing-menu button:hover {
+  background: rgba(17, 17, 13, 0.09);
+}
+
+.digidaw-landing-menu button:active {
+  transform: translateY(1px);
+}
+
+.digidaw-landing-menu button.is-active {
+  background: var(--digidaw-ink);
+  color: var(--digidaw-yellow);
+}
+
+.digidaw-landing-sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 10px;
+  line-height: 1.35;
+  max-width: 205px;
+}
+
+.digidaw-landing-sidebar-footer span {
+  opacity: 0.62;
+}
+
+.digidaw-landing-sidebar-footer strong {
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.035em;
+}
+
+.digidaw-documentation-view {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--digidaw-sidebar-width);
+  z-index: 1100;
+  background: var(--digidaw-yellow);
+  color: var(--digidaw-ink);
+  font-family: 'Kumbh Sans', sans-serif;
+}
+
+.digidaw-documentation-scroll {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  padding: 62px clamp(34px, 7vw, 110px) 100px;
+  scrollbar-color: rgba(17, 17, 13, 0.7) transparent;
+  scrollbar-width: thin;
+}
+
+.digidaw-documentation-scroll::-webkit-scrollbar {
+  width: 9px;
+}
+
+.digidaw-documentation-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.digidaw-documentation-scroll::-webkit-scrollbar-thumb {
+  background: rgba(17, 17, 13, 0.62);
+  border-radius: 99px;
+  border: 3px solid var(--digidaw-yellow);
+}
+
+.digidaw-markdown {
+  max-width: 980px;
+  margin: 0 auto;
+  color: var(--digidaw-ink);
+  font-size: 15px;
+  line-height: 1.72;
+}
+
+.digidaw-markdown h1,
+.digidaw-markdown h2,
+.digidaw-markdown h3,
+.digidaw-markdown h4 {
+  color: var(--digidaw-ink);
+  margin: 0;
+}
+
+.digidaw-markdown h1 {
+  font-family: 'Syncopate', sans-serif;
+  font-size: clamp(32px, 4.2vw, 66px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+  margin-bottom: 26px;
+  max-width: 860px;
+}
+
+.digidaw-markdown h2 {
+  font-size: 26px;
+  line-height: 1.12;
+  font-weight: 900;
+  letter-spacing: -0.035em;
+  margin-top: 62px;
+  margin-bottom: 16px;
+  padding-top: 4px;
+  border-top: 2px solid var(--digidaw-ink);
+}
+
+.digidaw-markdown h3 {
+  font-size: 19px;
+  line-height: 1.2;
+  font-weight: 900;
+  margin-top: 34px;
+  margin-bottom: 9px;
+}
+
+.digidaw-markdown h4 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 900;
+  margin-top: 26px;
+  margin-bottom: 8px;
+}
+
+.digidaw-markdown p {
+  margin: 0 0 16px;
+  max-width: 880px;
+}
+
+.digidaw-markdown strong {
+  font-weight: 900;
+}
+
+.digidaw-markdown em {
+  font-style: italic;
+}
+
+.digidaw-markdown code {
+  font-family: 'Azeret Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86em;
+  font-weight: 650;
+  background: rgba(17, 17, 13, 0.1);
+  padding: 0.12em 0.34em;
+  border-radius: 3px;
+}
+
+.digidaw-markdown pre {
+  margin: 18px 0 26px;
+  max-width: 900px;
+  overflow-x: auto;
+  background: var(--digidaw-ink);
+  color: var(--digidaw-yellow);
+  border-radius: 8px;
+  padding: 18px 20px;
+  line-height: 1.55;
+}
+
+.digidaw-markdown pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.digidaw-markdown ul,
+.digidaw-markdown ol {
+  margin: 10px 0 22px;
+  padding-left: 23px;
+  max-width: 870px;
+}
+
+.digidaw-markdown li {
+  margin: 5px 0;
+  padding-left: 4px;
+}
+
+.digidaw-markdown blockquote {
+  margin: 24px 0 28px;
+  max-width: 880px;
+  border-left: 5px solid var(--digidaw-ink);
+  padding: 9px 0 9px 18px;
+  font-size: 18px;
+  line-height: 1.48;
+  font-weight: 800;
+}
+
+.digidaw-markdown hr {
+  border: 0;
+  height: 1px;
+  background: rgba(17, 17, 13, 0.36);
+  margin: 42px 0;
+}
+
+.digidaw-doc-loading,
+.digidaw-doc-error {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--digidaw-ink);
+}
+
+@media (max-width: 800px) {
+  :root {
+    --digidaw-sidebar-width: 164px;
+  }
+
+  .digidaw-landing-sidebar {
+    padding: 20px 12px 18px;
+  }
+
+  .digidaw-landing-brand small,
+  .digidaw-landing-sidebar-footer span {
+    display: none;
+  }
+
+  .digidaw-documentation-scroll {
+    padding: 42px 24px 80px;
+  }
+
+  .digidaw-markdown {
+    font-size: 14px;
+  }
+}
