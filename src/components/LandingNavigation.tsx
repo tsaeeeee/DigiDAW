@@ -6,7 +6,7 @@ import '../landing-navigation.css';
 type LandingView = 'digidaw' | 'documentation';
 
 export function LandingNavigation() {
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(() => !document.querySelector('header'));
   const [view, setView] = useState<LandingView>('digidaw');
 
   useEffect(() => {
