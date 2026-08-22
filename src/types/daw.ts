@@ -22,6 +22,8 @@ export interface AudioClip {
   startTime: number;
   duration: number;
   buffer?: AudioBuffer;
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 export interface Track {
