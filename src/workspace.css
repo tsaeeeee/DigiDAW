@@ -1,0 +1,304 @@
+/* DigiDAW workspace skin — visual only.
+   Unifies the transport + arrangement area with the mixer without changing
+   transport callbacks, timeline geometry, zoom math, grid spacing, or audio. */
+
+/* --------------------------------------------------------------------------
+   Shared typography + matte surface language
+   -------------------------------------------------------------------------- */
+header,
+header *,
+main,
+main * {
+  font-family: "Kumbh Sans", sans-serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "YOPQ" 300;
+}
+
+header .major-mono-display-regular,
+header .major-mono,
+header .font-number,
+header .font-mono,
+main .major-mono-display-regular,
+main .major-mono,
+main .font-number,
+main .font-mono {
+  font-family: "Kumbh Sans", sans-serif !important;
+  font-variation-settings: "YOPQ" 300 !important;
+}
+
+/* --------------------------------------------------------------------------
+   Top transport
+   Keep the existing 48px height and all component dimensions.
+   -------------------------------------------------------------------------- */
+header {
+  background: #0f0f0c !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Brand stays distinct, but loses any generic panel feeling around it. */
+header > div:first-child {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Main transport console group. */
+header > div:nth-child(2) {
+  background: #171711 !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  box-shadow: none !important;
+}
+
+/* All header buttons share the same flat matte component treatment. */
+header button {
+  border: 0 !important;
+  outline: 0 !important;
+  background: #27271f !important;
+  background-image: none !important;
+  color: #aaa99d !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+header button:hover:not(:disabled) {
+  background: #303025 !important;
+  background-image: none !important;
+  color: #f0edd9 !important;
+  box-shadow: none !important;
+}
+
+/* Preserve active yellow semantics for play/metronome/mixer/etc. */
+header button[class*="bg-[#ffd900]"],
+header button[class*="bg-[#ffd900]/"],
+header button[aria-pressed="true"] {
+  background: #ffd900 !important;
+  background-image: none !important;
+  color: #11100a !important;
+  box-shadow: none !important;
+}
+
+header button[class*="bg-[#ffd900]"]:hover:not(:disabled),
+header button[class*="bg-[#ffd900]/"]:hover:not(:disabled) {
+  background: #ffd900 !important;
+  color: #11100a !important;
+}
+
+header button:disabled {
+  box-shadow: none !important;
+}
+
+/* Utility buttons at the far right use exactly the same material. */
+header > div:last-child button {
+  border-radius: 5px !important;
+}
+
+/* Internal separators stay tiny but become warm/subtle rather than gray UI chrome. */
+header [class*="w-[1px]"] {
+  background: #2a2a21 !important;
+  opacity: 0.58;
+}
+
+/* BPM / timestamp / mini displays. */
+header input[type="number"] {
+  border: 0 !important;
+  outline: 0 !important;
+  background: #0d0d0a !important;
+  color: #ffd900 !important;
+  box-shadow: none !important;
+}
+
+header div:has(> canvas[width="58"][height="18"]) {
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 4px !important;
+  background: #090907 !important;
+  box-shadow: none !important;
+}
+
+header div:has(> canvas[width="58"][height="18"]):hover {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Beat LEDs: no outlined/glowing pills; state is communicated by fill only. */
+header div[class*="rounded-full"][class*="w-2"][class*="h-2"] {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Timestamp keeps the exact footprint but uses mixer typography. */
+header > div:nth-child(2) > div:has(> span.major-mono-display-regular) span {
+  letter-spacing: 0.02em !important;
+}
+
+/* Zoom: preserve max width and slider dimensions, only change the material. */
+header input[type="range"] {
+  background: #292920 !important;
+  box-shadow: none !important;
+}
+
+/* Performance popup is also flat/warm. */
+header div.absolute.top-full {
+  border: 0 !important;
+  background: #171711 !important;
+  box-shadow: none !important;
+}
+
+header div.absolute.top-full [class*="border-"] {
+  border-color: #2a2a21 !important;
+}
+
+/* --------------------------------------------------------------------------
+   Arrangement / timeline shell
+   Geometry is deliberately untouched:
+   - sidebar remains 220px
+   - ruler remains h-6
+   - lane remains h-[80px]
+   - grid background-size remains the inline BPM/zoom calculation
+   -------------------------------------------------------------------------- */
+main {
+  background: #10100d !important;
+}
+
+main > div:first-child {
+  background: #10100d !important;
+}
+
+/* Sticky track list. */
+main > div > div > div:first-child {
+  background: #14140f !important;
+  border-right-color: rgba(255, 217, 0, 0.055) !important;
+  box-shadow: none !important;
+}
+
+/* "Tracks" ruler-aligned header. */
+main > div > div > div:first-child > div:first-child {
+  background: #171711 !important;
+  border-bottom-color: rgba(255, 217, 0, 0.06) !important;
+  color: #8e8c80 !important;
+  text-transform: none !important;
+  letter-spacing: 0.02em !important;
+  box-shadow: none !important;
+}
+
+/* Track headers. First/last children are excluded: title row + empty filler. */
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) {
+  background: #171711 !important;
+  border-bottom-color: rgba(255, 217, 0, 0.055) !important;
+  box-shadow: none !important;
+}
+
+main > div > div > div:first-child > div[class*="bg-[#2d2a1d]"] {
+  background: #1d1c12 !important;
+  border-bottom-color: rgba(255, 217, 0, 0.11) !important;
+  box-shadow: none !important;
+}
+
+/* Track-header icon and M/S controls mirror mixer buttons. */
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) button {
+  border: 0 !important;
+  outline: 0 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) button[class*="bg-[#1a1a1a]"] {
+  background: #27271f !important;
+  color: #aaa99d !important;
+}
+
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) button[class*="bg-[#facc15]"],
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) button[class*="bg-[#fb923c]"] {
+  background: #ffd900 !important;
+  color: #11100a !important;
+}
+
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) button:hover {
+  box-shadow: none !important;
+}
+
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) input[type="text"],
+main > div > div > div:first-child > div:not(:first-child):not(:last-child) input:not([type]) {
+  border: 0 !important;
+  outline: 0 !important;
+  background: #0d0d0a !important;
+  box-shadow: none !important;
+}
+
+/* Empty sidebar continuation uses the same workspace floor. */
+main > div > div > div:first-child > div:last-child {
+  background: #10100d !important;
+}
+
+/* Timeline floor. */
+#timeline-column {
+  background: #10100d !important;
+}
+
+/* Ruler: same h-6 and same click/drag behavior, only a warm matte skin. */
+#timeline-column > div:first-child {
+  background: #171711 !important;
+  border-bottom-color: rgba(255, 217, 0, 0.06) !important;
+  box-shadow: none !important;
+}
+
+#timeline-column > div:first-child > div {
+  border-left-color: rgba(255, 217, 0, 0.12) !important;
+}
+
+#timeline-column > div:first-child > div > span {
+  color: #969488 !important;
+  font-family: "Kumbh Sans", sans-serif !important;
+  letter-spacing: 0 !important;
+}
+
+#timeline-column > div:first-child > div > div > div {
+  border-left-color: rgba(255, 243, 183, 0.075) !important;
+}
+
+/* Vertical grid: colors change, background-size does NOT.
+   The inline BPM/zoom-calculated backgroundSize remains untouched. */
+#timeline-column > div:nth-child(2) {
+  background-image:
+    linear-gradient(90deg, rgba(255, 217, 0, 0.105) 0.7px, transparent 0.7px),
+    linear-gradient(90deg, rgba(255, 245, 194, 0.032) 0.4px, transparent 0.4px) !important;
+}
+
+/* Track lanes: exact 80px height stays in App.tsx. */
+#timeline-column > [class*="h-[80px]"] {
+  background: #11110d !important;
+  border-bottom-color: rgba(255, 217, 0, 0.045) !important;
+  box-shadow: none !important;
+}
+
+#timeline-column > [class*="h-[80px]"][class*="bg-white/"] {
+  background: #171710 !important;
+  border-bottom-color: rgba(255, 217, 0, 0.095) !important;
+}
+
+/* Keep clip geometry and waveform presentation untouched; only remove generic
+   hover bevels from the shell so clips sit naturally on the new timeline. */
+#timeline-column [class*="cursor-grab"] {
+  box-shadow: none;
+}
+
+/* Scrollbar track belongs to the same warm-black family. */
+main ::-webkit-scrollbar-track {
+  background: #10100d;
+}
+
+main ::-webkit-scrollbar-thumb {
+  background: #2c2c23;
+}
+
+main ::-webkit-scrollbar-thumb:hover {
+  background: #38382d;
+}
+
+/* Toast is visually part of the top workspace, so keep it matte too. */
+body > div #root + div,
+.fixed.top-14 {
+  box-shadow: none !important;
+}
